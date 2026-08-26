@@ -134,8 +134,11 @@ serve() {
   # -ot per_layer_token_embd=CPU  : keep the 51B n-gram table off the GPU
   # -lm mmap                      : serve that table from NVMe via the page cache
   # --parallel 1                  : concurrent requests currently abort (see README)
+  # Without an alias, llama-server reports the full GGUF path as the model id, which
+  # leaks the filesystem layout to every API client and reads badly in model pickers.
   exec "$SRC/build/bin/llama-server" \
     -m "$M" \
+    --alias "${ALIAS:-qwen3.8-flash-next}" \
     -lm mmap \
     -ot "per_layer_token_embd=CPU" \
     --n-gpu-layers 999 \
