@@ -15,6 +15,9 @@ MODEL_DIR="${MODEL_DIR:-$ROOT/model}"
 REPO="${REPO:-unsloth/Qwen3.8-Flash-Next-GGUF}"
 QUANT="${QUANT:-UD-Q4_K_XL}"
 PR="${PR:-27742}"
+# The PR is active, so its tip moves. Pin a commit the patches in patches/ are known to
+# apply to; PR_SHA=head tracks the branch tip instead (patches may then not apply).
+PR_SHA="${PR_SHA:-035e227}"
 CUDA_ARCH="${CUDA_ARCH:-121}"          # GB10 is SM 12.1; cmake promotes this to 121a
 CTX="${CTX:-262144}"                   # KV is only ~24 KB/token, so full context is affordable
 HOST="${HOST:-127.0.0.1}"
@@ -66,18 +69,33 @@ setup() {
   fi
 
   log "fetching PR #${PR} (qwen4exp support - not yet merged upstream)"
-  git -C "$SRC" fetch --depth 50 origin "pull/${PR}/head:qwen4exp" 2>/dev/null || true
-  git -C "$SRC" checkout qwen4exp
+  git -C "$SRC" fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force 2>/dev/null || true
+  if [ "$PR_SHA" = "head" ]; then
+    git -C "$SRC" checkout -q qwen4exp
+  else
+    git -C "$SRC" checkout -q "$PR_SHA" 2>/dev/null || {
+      echo "NOTE: pinned commit $PR_SHA not reachable; falling back to the branch tip."
+      echo "      The patches may not apply - check the log below."
+      git -C "$SRC" checkout -q qwen4exp
+    }
+  fi
+  log "at $(git -C "$SRC" log --oneline -1)"
 
+  local applied=0 skipped=0
   for p in "$HERE"/patches/*.patch; do
     [ -e "$p" ] || continue
     if git -C "$SRC" apply --check "$p" 2>/dev/null; then
       log "applying $(basename "$p")"
-      git -C "$SRC" apply "$p"
+      git -C "$SRC" apply "$p"; applied=$((applied+1))
+    elif git -C "$SRC" apply --reverse --check "$p" 2>/dev/null; then
+      log "$(basename "$p") already applied"; applied=$((applied+1))
     else
-      log "skipping $(basename "$p") (already applied or does not apply)"
+      echo "WARNING: $(basename "$p") does not apply to this checkout - building without it."
+      echo "         See docs/sources.md; try PR_SHA=035e227 for the pinned commit."
+      skipped=$((skipped+1))
     fi
   done
+  [ "$skipped" -gt 0 ] && echo "WARNING: ${skipped} patch(es) skipped, ${applied} applied."
 
   log "building for SM ${CUDA_ARCH} with ${JOBS} jobs (this takes a while)"
   cmake -S "$SRC" -B "$SRC/build" \

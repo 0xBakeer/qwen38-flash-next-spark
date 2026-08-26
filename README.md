@@ -148,3 +148,9 @@ Two patches against llama.cpp ship in [`patches/`](patches/):
 - **llama.cpp** for everything else.
 
 MIT licensed.
+
+## Sources
+
+Model, weights, the required llama.cpp PR, upstream bug reports, the Qwen tech-report claim
+this whole approach rests on, and reference numbers from other hardware:
+[docs/sources.md](docs/sources.md).
