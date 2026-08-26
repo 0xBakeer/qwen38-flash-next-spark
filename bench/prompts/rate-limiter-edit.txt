@@ -1,0 +1,130 @@
+Here is a Python module. Return the ENTIRE file back to me with exactly one
+change: rename the class TokenBucket to RateLimiter everywhere it appears
+(definition, docstrings, type hints, and the usage example at the bottom).
+Change nothing else. Output only the code, no explanation.
+
+--- FILE START ---
+import threading
+import time
+from dataclasses import dataclass, field
+from typing import Dict, Optional
+
+
+class BucketExhausted(Exception):
+    """Raised when a caller asks for more tokens than the bucket can ever hold."""
+
+
+@dataclass
+class TokenBucket:
+    """A thread-safe token bucket for rate limiting.
+
+    Tokens refill continuously at `rate` per second up to `capacity`. Callers
+    either acquire immediately or block until enough tokens accumulate. The
+    refill is computed lazily on each call rather than by a background thread,
+    which keeps the object cheap to create and free of teardown concerns.
+    """
+
+    rate: float
+    capacity: float
+    _tokens: float = field(init=False)
+    _last: float = field(init=False)
+    _lock: threading.Lock = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._tokens = self.capacity
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def _refill_locked(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._last
+        if elapsed <= 0:
+            return
+        self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)
+        self._last = now
+
+    def available(self) -> float:
+        """Current token count, refilled to now."""
+        with self._lock:
+            self._refill_locked()
+            return self._tokens
+
+    def try_acquire(self, amount: float = 1.0) -> bool:
+        """Take `amount` tokens if available. Never blocks."""
+        if amount > self.capacity:
+            raise BucketExhausted(
+                f"asked for {amount} tokens, capacity is {self.capacity}"
+            )
+        with self._lock:
+            self._refill_locked()
+            if self._tokens >= amount:
+                self._tokens -= amount
+                return True
+            return False
+
+    def acquire(self, amount: float = 1.0, timeout: Optional[float] = None) -> bool:
+        """Take `amount` tokens, waiting up to `timeout` seconds."""
+        if amount > self.capacity:
+            raise BucketExhausted(
+                f"asked for {amount} tokens, capacity is {self.capacity}"
+            )
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            with self._lock:
+                self._refill_locked()
+                if self._tokens >= amount:
+                    self._tokens -= amount
+                    return True
+                shortfall = amount - self._tokens
+                wait = shortfall / self.rate
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                wait = min(wait, remaining)
+            time.sleep(max(wait, 0.001))
+
+    def reset(self) -> None:
+        """Refill to capacity and restart the clock."""
+        with self._lock:
+            self._tokens = self.capacity
+            self._last = time.monotonic()
+
+
+class BucketRegistry:
+    """Keyed collection of TokenBucket instances, created on first use."""
+
+    def __init__(self, rate: float, capacity: float) -> None:
+        self.rate = rate
+        self.capacity = capacity
+        self._buckets: Dict[str, TokenBucket] = {}
+        self._lock = threading.Lock()
+
+    def for_key(self, key: str) -> TokenBucket:
+        with self._lock:
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                bucket = TokenBucket(rate=self.rate, capacity=self.capacity)
+                self._buckets[key] = bucket
+            return bucket
+
+    def try_acquire(self, key: str, amount: float = 1.0) -> bool:
+        return self.for_key(key).try_acquire(amount)
+
+    def drop(self, key: str) -> None:
+        with self._lock:
+            self._buckets.pop(key, None)
+
+
+if __name__ == "__main__":
+    bucket = TokenBucket(rate=5.0, capacity=10.0)
+    granted = sum(1 for _ in range(15) if bucket.try_acquire())
+    print(f"granted {granted} of 15 immediately")
+    print(f"available now: {bucket.available():.2f}")
+    bucket.acquire(3.0, timeout=2.0)
+    print(f"after blocking acquire: {bucket.available():.2f}")
+--- FILE END ---

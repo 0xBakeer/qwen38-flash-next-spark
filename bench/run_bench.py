@@ -88,38 +88,56 @@ def bench_ctx(api, model, rows):
         rows.append(("ctx", r["prompt_tokens"], r["prefill"], r["decode"]))
 
 
-def bench_tasks(api, rows):
+def bench_tasks(api, rows, repeat=3, temp=0.0):
     src = sample_file()
     tasks = [
         ("Reproduce a file with one change",
          "Here is a Python file:\n\n```python\n" + src +
          "\n```\n\nReturn the ENTIRE file with one change: add a module-level constant "
-         "PAGE_FLAG_INCORE = 1 near the top and use it instead of the literal 1 in the "
-         "mincore bit test. Output only code.", "PAGE_FLAG_INCORE"),
+         "PAGE_FLAG_@ = 1 near the top and use it instead of the literal 1 in the "
+         "mincore bit test. Output only code.", "PAGE_FLAG_"),
         ("Targeted bug fix",
          "Here is a Python file:\n\n```python\n" + src +
          "\n```\n\nReturn the ENTIRE file with the page-size lookup made robust: fall back "
-         "to 4096 if os.sysconf raises. Output only code.", "4096"),
+         "to 4096 if os.sysconf raises, and name the fallback constant FALLBACK_@. Output only code.", "4096"),
         ("Add a function",
          "Here is a Python file:\n\n```python\n" + src +
          "\n```\n\nReturn the ENTIRE file with an added function human(n) that formats a "
-         "byte count as GiB. Output only code.", "def human"),
+         "byte count as GiB, named human_@. Output only code.", "def human_"),
         ("Free-form prose (control)",
          "Write about 250 words explaining why consistent hashing reduces key movement "
-         "when a node joins or leaves.", None),
+         "when a node joins or leaves. Mention the number @ somewhere.", None),
     ]
     print("\n## Decode vs task shape\n")
     print("Speculation drafts from repetition in the prompt, so throughput tracks how much of")
     print("the output already appears in the input.\n")
-    print("| Task | Decode tok/s | Output tokens | Correct |")
+    print("n={} per task, temperature {}. Median with min-max range.\n".format(repeat, temp))
+    print("| Task | Decode tok/s (median) | Range | Correct |")
     print("|---|---|---|---|")
     for name, prompt, needle in tasks:
-        r = post(api, prompt, 1600)
-        body = r["content"] or r["reasoning"]
-        ok = "n/a" if needle is None else ("yes" if needle in body else "no")
-        print("| {} | **{:.1f}** | {} | {} |".format(
-            name, r["decode"], r["completion_tokens"], ok))
-        rows.append(("task", name, r["decode"], ok))
+        speeds, oks = [], []
+        # Two things this loop must avoid, both learned the hard way:
+        #
+        # 1. The first request after any state change is markedly slower
+        #    (~133 vs ~171 tok/s), so one warmup is discarded.
+        # 2. Repeating an IDENTICAL prompt lets ngram-mod draft from its own
+        #    memory of the previous generation. Measured inflation: 60 -> 169
+        #    tok/s from the third identical request onward. So every repetition
+        #    substitutes a different token for "@", keeping the task identical
+        #    in shape while defeating that reuse.
+        post(api, prompt.replace("@", "WARM"), 1600, temperature=temp)
+        for i in range(repeat):
+            tag = "ABCDEFGHIJ"[i % 10] * 3
+            r = post(api, prompt.replace("@", tag), 1600, temperature=temp)
+            body = r["content"] or r["reasoning"]
+            speeds.append(r["decode"])
+            oks.append("n/a" if needle is None else ("yes" if needle in body else "no"))
+        speeds.sort()
+        med = speeds[len(speeds) // 2]
+        ok = "n/a" if needle is None else "{}/{}".format(oks.count("yes"), len(oks))
+        print("| {} | **{:.1f}** | {:.1f} - {:.1f} | {} |".format(
+            name, med, speeds[0], speeds[-1], ok))
+        rows.append(("task", name, med, ok))
 
 
 def main():
@@ -129,6 +147,10 @@ def main():
                     help="path to shard 00001 of the GGUF, to report table residency")
     ap.add_argument("--out", default=None)
     ap.add_argument("--label", default=None, help="tag this run, e.g. cold / warm")
+    ap.add_argument("--repeat", type=int, default=3,
+                    help="repetitions per task; reports median and range")
+    ap.add_argument("--temp", type=float, default=0.0,
+                    help="0 = greedy. Speculation acceptance depends on the sampled text, so\n                         at temp 1.0 a single run varies by +-30 percent and means little.")
     ap.add_argument("--skip-ctx", action="store_true")
     ap.add_argument("--skip-tasks", action="store_true")
     a = ap.parse_args()
@@ -155,7 +177,7 @@ def main():
     if not a.skip_ctx:
         bench_ctx(a.api, a.model, rows)
     if not a.skip_tasks:
-        bench_tasks(a.api, rows)
+        bench_tasks(a.api, rows, a.repeat, a.temp)
     print("\n---\nOne request at a time; concurrent requests abort the server (see README).")
 
 

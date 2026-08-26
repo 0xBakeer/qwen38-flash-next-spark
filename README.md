@@ -156,6 +156,14 @@ Two patches against llama.cpp ship in [`patches/`](patches/):
 
 MIT licensed.
 
+## Documentation
+
+- [docs/how-it-works.md](docs/how-it-works.md) - the 51B-on-NVMe mechanism and memory arithmetic
+- [docs/speculative-decoding.md](docs/speculative-decoding.md) - why throughput varies 3x by task,
+  and three ways of measuring it that give wrong answers
+- [docs/open-webui.md](docs/open-webui.md) - connecting it, and turning reasoning off
+- [docs/benchmarks.md](docs/benchmarks.md) and [bench/results.md](bench/results.md) - measurements
+
 ## Sources
 
 Model, weights, the required llama.cpp PR, upstream bug reports, the Qwen tech-report claim
