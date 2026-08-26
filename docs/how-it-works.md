@@ -87,6 +87,13 @@ one 26.8 GiB sequential read, ~26 s. Measured effect:
 | Cold | 1.3% | 13.1 | 21.05 |
 | Warmed | 79% | 2.1 | 22.40 |
 
+**Important caveat, measured later:** the +6% above was measured with speculation OFF. With
+`--spec-type ngram-mod` enabled, warming is worth far more — up to **+42%** on copy-heavy work
+(52.6 -> 74.6 tok/s). Verifying a 50-60 token span touches many n-gram rows at once, so major
+faults cost proportionally more than during one-token-at-a-time decode. See
+[bench/results.md](../bench/results.md).
+
+
 Major faults drop ~6x — but decode only improves ~6%. That asymmetry is the real finding: even
 *cold*, with 13 major faults per token, the NVMe lookups barely dent throughput, because decode
 time is dominated by reading the activated compute weights out of ~273 GB/s unified memory, and

@@ -51,6 +51,13 @@ Warming = one sequential read of the 26.8 GiB `per_layer_token_embd` region, don
 | Cold | 1.3% | 13.1 | 21.05 |
 | Warmed | 79% | 2.1 | 22.40 |
 
+**Important caveat, measured later:** the +6% above was measured with speculation OFF. With
+`--spec-type ngram-mod` enabled, warming is worth far more — up to **+42%** on copy-heavy work
+(52.6 -> 74.6 tok/s). Verifying a 50-60 token span touches many n-gram rows at once, so major
+faults cost proportionally more than during one-token-at-a-time decode. See
+[bench/results.md](../bench/results.md).
+
+
 Observations:
 
 - The table does **not** warm itself under normal use: rows are addressed by a 3-gram hash into

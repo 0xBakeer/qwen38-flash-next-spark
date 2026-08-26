@@ -58,6 +58,13 @@ Table warming A/B (`tools/warm_table.py`):
 | Cold | 1.3% | 13.1 | 21.05 |
 | Warmed | 79% | 2.1 | 22.40 |
 
+**Important caveat, measured later:** the +6% above was measured with speculation OFF. With
+`--spec-type ngram-mod` enabled, warming is worth far more — up to **+42%** on copy-heavy work
+(52.6 -> 74.6 tok/s). Verifying a 50-60 token span touches many n-gram rows at once, so major
+faults cost proportionally more than during one-token-at-a-time decode. See
+[bench/results.md](bench/results.md).
+
+
 Warming costs one sequential 26.8 GiB read (~26 s) and cuts major faults ~6x — but buys only
 ~+6% throughput. In other words: **keeping the table on NVMe is nearly free.** That is the
 headline result. Full details and reproduction steps in [docs/benchmarks.md](docs/benchmarks.md).
@@ -93,12 +100,12 @@ python3 tools/warm_table.py
 context, so it needs no draft model and no extra memory, and speculation is exact — the target
 verifies every token, so output is identical.
 
-| Task | Decode tok/s | Draft acceptance |
+| Task | Cold table | Warm table |
 |---|---|---|
-| Reproduce a given file with one change | 97.4 | 94.7% |
-| Targeted bug fix in a given file | 68.6 | 81.4% |
-| Add a function to a given file | 31.4 | 56.9% |
-| Free-form prose (control) | 22.1 | 5.8% |
+| Reproduce a given file with one change | 52.6 | **74.6** |
+| Targeted bug fix in a given file | 46.0 | **51.6** |
+| Add a function to a given file | 32.4 | 30.4 |
+| Free-form prose (control) | 22.2 | 23.3 |
 
 The gain tracks how much of the output already appears in the prompt, which is exactly the
 shape of tool-driven editing. Free-form generation is unchanged. Disable with `SPEC=none`.
