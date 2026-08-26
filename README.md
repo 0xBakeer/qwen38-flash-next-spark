@@ -87,6 +87,29 @@ Other measured facts:
 python3 tools/warm_table.py
 ```
 
+### Speculative decoding: large win on copy-heavy work
+
+`run.sh` enables `--spec-type ngram-mod` by default. It drafts spans from repetition in the
+context, so it needs no draft model and no extra memory, and speculation is exact — the target
+verifies every token, so output is identical.
+
+| Task | Decode tok/s | Draft acceptance |
+|---|---|---|
+| Reproduce a given file with one change | 97.4 | 94.7% |
+| Targeted bug fix in a given file | 68.6 | 81.4% |
+| Add a function to a given file | 31.4 | 56.9% |
+| Free-form prose (control) | 22.1 | 5.8% |
+
+The gain tracks how much of the output already appears in the prompt, which is exactly the
+shape of tool-driven editing. Free-form generation is unchanged. Disable with `SPEC=none`.
+
+An external draft model was also tested (Qwen3.5-0.8B, vocab-compatible at 248320) and gave
+**no** speedup: mean accepted length 2.88 yet decode stayed ~23 tok/s. Speculative decoding
+normally amortizes one weight read over k tokens, but in a top-10-of-512 MoE, k tokens activate
+up to k*10 different experts, so weight traffic scales with k. `ngram-mod` wins instead by
+accepting very long spans (mean 50-60 tokens), which amortizes over the verify step rather than
+over the weight read.
+
 ## Known issues
 
 Documented honestly — this is early, on an unmerged architecture port.

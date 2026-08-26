@@ -123,7 +123,14 @@ serve() {
   local extra=()
   [ -n "${EXTRA_ARGS:-}" ] && read -r -a extra <<< "$EXTRA_ARGS"
 
-  log "starting llama-server on ${HOST}:${PORT}, ctx ${CTX}"
+  # ngram-mod drafts spans from context repetition, so it needs no draft model and
+  # costs no memory. It is a large win on copy-heavy work (editing a file you were
+  # given) and a no-op on free-form prose. Speculation is exact: the target verifies
+  # every token, so output is unchanged. Disable with SPEC=none.
+  local spec=()
+  [ "${SPEC:-ngram-mod}" != "none" ] && spec=(--spec-type "${SPEC:-ngram-mod}")
+
+  log "starting llama-server on ${HOST}:${PORT}, ctx ${CTX}, spec ${SPEC:-ngram-mod}"
   # -ot per_layer_token_embd=CPU  : keep the 51B n-gram table off the GPU
   # -lm mmap                      : serve that table from NVMe via the page cache
   # --parallel 1                  : concurrent requests currently abort (see README)
@@ -134,6 +141,7 @@ serve() {
     --n-gpu-layers 999 \
     --ctx-size "$CTX" \
     --parallel 1 \
+    "${spec[@]}" \
     --temp 1.0 --top-p 0.95 --top-k 20 \
     --host "$HOST" --port "$PORT" \
     "${extra[@]}"
