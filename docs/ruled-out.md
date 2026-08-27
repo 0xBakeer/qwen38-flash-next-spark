@@ -81,7 +81,7 @@ and whatever starts that worker.
 
 **Expected:** the 3–5× that speculative decoding delivers on dense models.
 
-**Measured:** ~1.26× on prose (27.8 → 32.2 across engines), and a flat 1.2× spread across all four
+**Measured:** ~1.16× on prose across engines (27.8 → 32.2), and a flat 1.2× spread across all four
 task shapes.
 
 **Why, and this is architectural:** on a top-10-of-512 mixture-of-experts, verifying *k* draft

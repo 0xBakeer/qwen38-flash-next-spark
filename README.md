@@ -21,7 +21,7 @@ you a factor of two, so it is worth thirty seconds.
 | Fixing a bug in a file                      | **46** | 35 |
 | Writing prose                               | 28 | **32** |
 | Time to start answering (short prompt)      | ~1–2 s | **~0.3 s** |
-| Reading a 128,000-token document            | ~4 min | **~56 s** |
+| Reading a 128,000-token document            | ~7 min | **~56 s** |
 | Speed at very long context                  | degrades | **stays flat** |
 | Handles more than one request at a time     | no | yes, two |
 | Disk needed                                 | 105 GB | 126 GB |

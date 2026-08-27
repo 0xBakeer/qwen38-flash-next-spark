@@ -206,7 +206,7 @@ Acceptance was healthy; throughput did not move. On a top-10-of-512 MoE, *k* dra
 the **union** of experts across those positions, so weight traffic grows with *k*.
 
 **This is no longer the last word on speculation.** The model's own trained MTP head *does* help —
-about 1.26× on prose — but only through vLLM, because the GGUF converter drops the head
+about 1.16× on prose across engines — but only through vLLM, because the GGUF converter drops the head
 (`supports_mtp_export = False`; we confirmed zero MTP tensors across all four shards, and all 31
 present in the NVFP4 checkpoint). See [ruled-out.md](ruled-out.md#mtp-speculative-decoding--real-but-modest).
 

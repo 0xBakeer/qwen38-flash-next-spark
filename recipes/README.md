@@ -10,7 +10,7 @@ Two working setups, plus the ones we tried and rejected.
 | Worst at | prose (27.8), prefill (253–486) | file rewriting (39.1) |
 | Consistency | 3.2× swing across tasks | **1.2× swing** |
 | Concurrency | 1 | 2 |
-| Disk / start-up | 105 GB / ~2 min | 126 GB / 12–15 min |
+| Disk / start-up | 105 GB / ~2–4 min | 126 GB / 12–15 min |
 
 Full comparison: [../docs/choosing.md](../docs/choosing.md).
 All figures: [../docs/measurements.md](../docs/measurements.md).
@@ -49,8 +49,9 @@ a `PleOffloadLayer`, finishes graph capture, then spins a full core with zero di
 indefinitely, waiting on an offload worker the single-Spark image never launches. Only
 `VLLM_PLE_MMAP` works here.
 
-**vLLM at `MTP=0`.** Without the draft head vLLM is *slower* than llama.cpp at decode. The head is
-the entire reason to run this recipe; do not disable it except for an A/B.
+**vLLM at `MTP=0`.** Not our measurement — the upstream recipe's own A/B has vLLM *slower* than
+llama.cpp at decode with the head off (17 vs 22 tok/s). The head is the entire reason to run
+this recipe; do not disable it except for an A/B.
 
 **Deeper speculation (`MTP` ≥ 4).** On a top-10-of-512 MoE, verifying *k* draft tokens activates
 the union of experts across those positions, so the returns fall off hard. 3 is about the optimum.

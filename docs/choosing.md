@@ -26,11 +26,11 @@ You can install both. Only one runs at a time — they share the GPU.
 | Writing prose | 27.8 | **32.2** |
 | Consistency across those four | 3.2× swing | **1.2× swing** |
 | Time to first token | ~1–2 s | **~0.3 s** |
-| Reading a 128k-token document | ~4 min | **~56 s** |
+| Reading a 128k-token document | ~7 min | **~56 s** |
 | Speed at 128k context | degrades | **flat** |
 | Simultaneous requests | 1 (others queue) | 2 |
 | Disk | 105 GB | 126 GB |
-| Start-up | ~2 min | 12–15 min |
+| Start-up | ~2–4 min | 12–15 min |
 
 ---
 

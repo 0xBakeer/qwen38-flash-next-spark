@@ -35,7 +35,8 @@ Medians of 3, temperature 0.
 | **spread** | 3.2× | 3.1× | 2.8× | **1.2×** |
 
 Cold = 17.7% of the n-gram table resident, verified with `mincore(2)` after dropping the page
-cache. Warm = 58.1%. All coding outputs verified correct 3/3 — the drafter is not trading
+cache. Warm = 58.1%. The Q3_K_XL column booted cold at 29.0% and was never warmed — immaterial,
+since residency measurably changes nothing, but stated for completeness. All coding outputs verified correct 3/3 — the drafter is not trading
 correctness for speed.
 
 The spread row is the finding. Two speculation mechanisms, opposite characters:
@@ -61,7 +62,8 @@ Honest because prefix caching is disabled on this platform — nothing is served
 | 128,104 | 55.77 s | 2,297 |
 | 195,458 | 89.55 s | **2,183** |
 
-**12% falloff from 2.5k to 195k tokens.** For comparison, llama.cpp cold measures ~486 tok/s at
+**Essentially flat: the 2.5k and 195k endpoints differ by 2%, and even the falloff from the
+peak (2,463 at 20k) to 195k is only 11%.** For comparison, llama.cpp cold measures ~486 tok/s at
 10.2k, 448 at 40.3k, and 253 at 161k — so vLLM is 4–5× faster at prefill *and* degrades less.
 
 A caution about prefill numbers generally: an earlier run of ours reported ~1,500–1,660 tok/s for

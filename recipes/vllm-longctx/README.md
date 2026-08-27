@@ -33,7 +33,10 @@ shards, the NVFP4 checkpoint contains **all 31**.
 Because the head is trained rather than copying from your prompt, it works the same on any text.
 Hence the flatness — and hence why this recipe wins on prose and loses on file rewriting.
 
-The gain is real but modest: about **1.26× on prose**. On a top-10-of-512 mixture-of-experts,
+The gain is real but modest: across engines, prose goes 27.8 → 32.2 (**~1.16×**). We did not
+run our own MTP-off A/B; the upstream recipe's in-engine one measured 17 → 27 tok/s at MTP=2,
+so part of our cross-engine delta is the engine and quant, not the head. Either way it is far
+from the 3–5× dense models see. On a top-10-of-512 mixture-of-experts,
 verifying *k* draft tokens touches the *union* of experts across those positions, so speculation
 buys far less here than the 3–5× seen on dense models. Raising `MTP` above 3 makes it worse, not
 better.

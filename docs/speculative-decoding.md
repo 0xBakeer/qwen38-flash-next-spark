@@ -47,7 +47,8 @@ and drops the head, so no MTP tensors exist in any GGUF of this model (verified 
 
 > **Updated 2026-08-27.** The head itself is fine — it is the GGUF conversion that loses it.
 > All 31 MTP tensors are present in the NVFP4 checkpoint, and vLLM runs them. Measured gain
-> on prose: about 1.26×, and flat across task shapes rather than the 3× swing `ngram-mod`
+> on prose: about 1.16× across engines (27.8 → 32.2), flat across task shapes rather than the
+> 3× swing `ngram-mod`
 > shows. Modest, because on a top-10-of-512 MoE verifying *k* draft tokens activates the
 > union of experts across those positions. See
 > [../recipes/vllm-longctx](../recipes/vllm-longctx/) and [ruled-out.md](ruled-out.md).
