@@ -54,8 +54,8 @@ From the repository root you can also use `../../run.sh edit setup|serve|bench|a
 
 **Do not bother warming the table.** The recipe used to recommend it. Re-measured on the current
 build with the `canreuse-qwen4exp` patch applied, warming buys **nothing**: prose is 27.8 tok/s at
-both 17.7% and 58.1% residency, identical to the decimal, and cold actually beat warm on two of
-four tasks. `tools/warm_table.py` is still here for A/B work, but the boot ritual is unnecessary.
+both 17.7% and 58.1% residency, identical to the decimal, and the medians moved in both directions by less than the
+run-to-run spread. `tools/warm_table.py` is still here for A/B work, but the boot ritual is unnecessary.
 
 **Do not drop to a lower-bit K-quant for speed.** `UD-Q3_K_XL` moves 19% fewer bytes per token and
 is **14% slower on prose** (24.0 vs 27.8). K-quant dequantisation costs more than the memory

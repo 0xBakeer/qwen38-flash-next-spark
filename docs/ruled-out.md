@@ -20,7 +20,7 @@ file reproduction, and up to +42% with speculation on.
 | Add a function | 32.2 | **36.9** |
 | Free-form prose | 27.8 | 27.8 |
 
-Cold matches or beats warm on three of four tasks, and prose is identical to the decimal.
+Read this as **no measurable difference**, not as "cold is faster". The medians move in both directions and the ranges overlap heavily — file reproduction is 78.6–109.1 cold against 78.1–114.2 warm. What did not happen is the +42% the earlier run reported.
 
 **Why the change:** almost certainly the `canreuse-qwen4exp` patch. With CUDA graph capture
 actually engaging, the per-token cost that page faults used to sit on top of is much smaller, so

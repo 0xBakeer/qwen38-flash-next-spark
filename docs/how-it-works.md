@@ -79,19 +79,35 @@ or medium workload produces a long stream of *distinct* 3-grams, so it rarely to
 row twice — there is no small hot set for the cache to converge on. After a normal session the
 table was only **1.3% cached**, and decode paid **13.1 major faults per token**.
 
-The fix is trivial: read the table region once, sequentially. `tools/warm_table.py` does this —
-one 26.8 GiB sequential read, ~26 s. Measured effect:
+The fix looks trivial: read the table region once, sequentially. `tools/warm_table.py` does
+this — one 26.8 GiB sequential read, ~26 s. Measured effect at the time:
 
 | State | Table cached | Major faults/token | Decode tok/s |
 |---|---:|---:|---:|
 | Cold | 1.3% | 13.1 | 21.05 |
 | Warmed | 79% | 2.1 | 22.40 |
 
-**Important caveat, measured later:** the +6% above was measured with speculation OFF. With
-`--spec-type ngram-mod` enabled, warming is worth far more — up to **+42%** on copy-heavy work
-(52.6 -> 74.6 tok/s). Verifying a 50-60 token span touches many n-gram rows at once, so major
-faults cost proportionally more than during one-token-at-a-time decode. See
-[bench/results.md](../bench/results.md).
+> **Corrected 2026-08-27 — warming is no longer worth doing.** Re-measured on the
+> current build with `patches/canreuse-qwen4exp.patch` applied, warming produces **no
+> measurable change**. Prose is 27.8 tok/s at both 17.7% and 58.1% residency; file
+> reproduction is 88.5 cold against 86.2 warm, with ranges that overlap heavily. The
+> earlier "+42% on copy-heavy work" figure did not reproduce.
+>
+> The likely cause is the patch itself: once CUDA graph capture engages, the per-token
+> cost that page faults used to sit on top of is much smaller, so residency stops
+> mattering. Note that the current *cold* number (88.5) exceeds the old *warm* one (74.6).
+>
+> `tools/warm_table.py` is kept for A/B work. The boot-time warming ritual is not needed.
+
+**What we believed on 2026-08-26, and no longer do.** The +6% above was measured with
+speculation OFF. With `--spec-type ngram-mod` enabled, warming appeared to be worth far more —
+up to +42% on copy-heavy work (52.6 -> 74.6 tok/s) — on the reasoning that verifying a 50-60
+token span touches many n-gram rows at once, so major faults should cost proportionally more
+than during one-token-at-a-time decode.
+
+That reasoning is sound and the effect is real when page faults dominate. It simply stopped
+applying: with CUDA graph capture engaging, faults no longer dominate. The re-measurement
+above supersedes it. Original record: [bench/results.md](../bench/results.md).
 
 
 Major faults drop ~6x — but decode only improves ~6%. That asymmetry is the real finding: even

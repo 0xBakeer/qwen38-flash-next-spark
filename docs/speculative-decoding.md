@@ -41,8 +41,16 @@ of staying flat. There is nothing to amortize.
 `ngram-mod` wins for a different reason: it accepts very long spans (50-60 tokens measured), so
 it amortizes over the *verify step* rather than over the weight read.
 
-MTP is not an option either. The GGUF converter sets `supports_mtp_export = False` and drops the
-head, so no MTP tensors exist in any GGUF of this model (verified across all 1224 tensors).
+MTP is not an option **in llama.cpp**. The GGUF converter sets `supports_mtp_export = False`
+and drops the head, so no MTP tensors exist in any GGUF of this model (verified across all
+1224 tensors).
+
+> **Updated 2026-08-27.** The head itself is fine — it is the GGUF conversion that loses it.
+> All 31 MTP tensors are present in the NVFP4 checkpoint, and vLLM runs them. Measured gain
+> on prose: about 1.26×, and flat across task shapes rather than the 3× swing `ngram-mod`
+> shows. Modest, because on a top-10-of-512 MoE verifying *k* draft tokens activates the
+> union of experts across those positions. See
+> [../recipes/vllm-longctx](../recipes/vllm-longctx/) and [ruled-out.md](ruled-out.md).
 
 ## Three ways to measure this wrong
 
@@ -83,6 +91,12 @@ run5: 171.4   run6: 171.3   run7: 170.7   run8: 170.4
 
 Runs 2-8 are stable to about 1%. Run 1 is 23% low. Comparing two first-runs against each other
 is what once produced a "cold page cache is faster than warm" result here, which is not a thing.
+
+> **Still true, and worth reading twice — 2026-08-27.** A properly repeated A/B (n=3, warmup
+> discarded) now finds **no measurable difference either way**: 88.5 cold against 86.2 warm on
+> file reproduction, ranges 78.6–109.1 and 78.1–114.2, and prose identical at 27.8. The
+> warning above is exactly why that is reported as "warming does nothing" rather than as
+> "cold is faster" — those medians differ by less than the run-to-run spread.
 
 ### 3. Letting `max_tokens` run past the copied region
 

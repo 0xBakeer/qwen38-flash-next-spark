@@ -151,7 +151,8 @@ serve() {
   log "starting llama-server on ${HOST}:${PORT}, ctx ${CTX}, spec ${SPEC:-ngram-mod}"
   # -ot per_layer_token_embd=CPU  : keep the 51B n-gram table off the GPU
   # -lm mmap                      : serve that table from NVMe via the page cache
-  # --parallel 1                  : concurrent requests currently abort (see README)
+  # --parallel 1                  : one slot. Concurrent requests queue rather than crash,
+  #                                 but they do not batch - see the recipe README
   # Without an alias, llama-server reports the full GGUF path as the model id, which
   # leaks the filesystem layout to every API client and reads badly in model pickers.
   exec "$SRC/build/bin/llama-server" \

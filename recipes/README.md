@@ -36,8 +36,8 @@ Kept here so you do not spend a day rediscovering them. Details and numbers in
 
 **llama.cpp with a warmed n-gram table.** Was the recommended path in earlier versions of this
 repo. Re-measured on the current build it buys **nothing** — prose is 27.8 tok/s at both 17.7% and
-58.1% residency, and cold beats warm on two of four tasks. The `canreuse-qwen4exp` patch appears
-to have removed the sensitivity.
+58.1% residency, with the medians moving in both directions by less than the run-to-run
+spread. The `canreuse-qwen4exp` patch appears to have removed the sensitivity.
 
 **llama.cpp at Q3_K_XL.** 19% fewer bytes per token, **14% slower on prose** (24.0 vs 27.8).
 K-quant dequantisation costs more than the bandwidth it saves. Ship it if you need the 21 GB of

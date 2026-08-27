@@ -15,12 +15,16 @@ Two things worth doing on the server side:
 - **`--alias`.** `run.sh` passes `--alias qwen3.8-flash-next` by default. Without it,
   `llama-server` reports the full GGUF path as the model id, which reads badly in the picker and
   advertises your filesystem layout to every client that calls `/v1/models`.
-- **`--parallel 1`.** Already the default in `run.sh`. Concurrent requests currently abort this
-  architecture (see the README), and Open WebUI will happily fire background requests at you.
+- **`--parallel 1`.** Already the default in `run.sh`. Concurrent requests do **not** crash —
+  corrected 2026-08-27, they queue. Eight simultaneous requests all returned 200 and completed
+  in near-perfect 3-second succession. But one slot means no batching: aggregate throughput
+  stays at the single-stream rate, so a background call landing mid-generation simply makes
+  you wait. The long-context recipe serves two sequences and does batch.
 
 **Turn off title generation, tag generation and follow-up suggestions** in
 **Settings → Interface**. Each is a separate model call, and with `--parallel 1` a background
-call landing while you are generating is a second in-flight request.
+call landing while you are generating goes into the queue ahead of nothing and behind you —
+harmless, but it is your throughput it is spending.
 
 ## Turning reasoning off
 

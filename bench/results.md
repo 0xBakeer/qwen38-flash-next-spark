@@ -1,5 +1,24 @@
 # Benchmark results
 
+> ### Superseded — 2026-08-27
+>
+> This page records a run from **2026-08-26**. A re-measurement the next day, on the same
+> commit and the same patches but with a harness that discards a warmup and varies the prompt
+> between repetitions, did not reproduce two of its conclusions:
+>
+> | claim here | re-measured |
+> |---|---|
+> | Reproduce a file, cold: **52.6** | **88.5** |
+> | Warming worth up to **+42%** on copy-heavy work | **no measurable difference** either way |
+> | Free-form prose: **22.2** | **27.8** |
+>
+> The difference is not fully explained. The most likely factor is that the current build has
+> `patches/canreuse-qwen4exp.patch` engaging CUDA graph capture, which both raises the floor
+> and removes the page-cache sensitivity that warming was compensating for.
+>
+> Kept as the dated record of what was measured then. **Current numbers:**
+> [../docs/measurements.md](../docs/measurements.md).
+
 Hardware: DGX Spark (GB10, SM121), 121 GiB unified memory, ~273 GB/s, CUDA 13.0, aarch64.
 Model: `unsloth/Qwen3.8-Flash-Next-GGUF` UD-Q4_K_XL (103.7 GiB, 4 shards), llama.cpp PR #27742
 at `035e227` plus the patches in `patches/`. Context 262144, `--parallel 1`,
