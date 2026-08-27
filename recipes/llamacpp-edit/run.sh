@@ -54,8 +54,11 @@ EOF
 
   # Swap must be off: we want cold n-gram pages evicted from the page cache,
   # never resident weights pushed into swap.
-  if [ "$(awk 'NR==2{print $3}' /proc/swaps 2>/dev/null || echo 0)" != "" ] && [ -s /proc/swaps ] && [ "$(wc -l < /proc/swaps)" -gt 1 ]; then
-    echo "NOTE: swap is enabled. Consider 'sudo swapoff -a' so file pages are evicted instead of anonymous ones."
+  # Test the contents, not the size: procfs files always stat as 0 bytes, so the
+  # `[ -s /proc/swaps ]` guard this used to carry meant the NOTE could never print.
+  if [ "$(awk 'NR>1' /proc/swaps 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo "NOTE: swap is enabled ($(awk 'NR>1{u+=$4} END{printf "%.1f", u/1048576}' /proc/swaps) GiB in use)."
+    echo "      Consider 'sudo swapoff -a' so file pages are evicted instead of anonymous ones."
   fi
 }
 
@@ -127,14 +130,37 @@ model_path() {
 
 serve() {
   find_cuda
+  # serve() does not run preflight(), and the deferred warm below polls /health.
+  [ "${WARM:-1}" = "1" ] && { command -v curl >/dev/null || die "curl not found (or set WARM=0)"; }
   local M; M=$(model_path)
 
   # The n-gram table does not warm on its own: 320M rows addressed by a 3-gram hash
   # means a short workload almost never touches a row twice. One sequential read
   # cuts major faults ~6x. Skip with WARM=0.
+  #
+  # Warm *after* the server is serving, not before. Loading the model streams the
+  # whole GGUF through a 121 GiB box, which evicts the table region as it goes:
+  # measured on a GB10, warming first left the table 100% cached and then 1.9%
+  # cached by the time the server answered /health, so the 26.8 GiB read was
+  # entirely wasted. Backgrounding it keeps the exec below, so this script is still
+  # replaced by llama-server and signal handling is unchanged.
+  #
+  # exec preserves the PID, so $$ is llama-server's once it takes over. Without the
+  # kill -0 check the warmer would outlive a server that failed to start, polling
+  # out its whole budget and then reading 26.8 GiB for nothing. WARM_WAIT counts
+  # attempts, each costing ~1 s (connection refused) to ~3 s (packets dropped).
   if [ "${WARM:-1}" = "1" ]; then
-    log "warming the n-gram table (one sequential read, ~30 s)"
-    python3 "$HERE/tools/warm_table.py" "$M" || echo "(warm failed; continuing)"
+    local self=$$
+    (
+      for _ in $(seq 1 "${WARM_WAIT:-600}"); do
+        kill -0 "$self" 2>/dev/null || exit 0
+        curl -sf -m 2 "http://${HOST}:${PORT}/health" >/dev/null 2>&1 && break
+        sleep 1
+      done
+      kill -0 "$self" 2>/dev/null || exit 0
+      log "warming the n-gram table (one sequential read, ~30 s)"
+      python3 "$HERE/tools/warm_table.py" "$M" || echo "(warm failed; continuing)"
+    ) &
   fi
 
   # Quoting "${EXTRA_ARGS:-}" would pass an empty argument, which llama-server rejects.
