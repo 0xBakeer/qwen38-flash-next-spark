@@ -1,0 +1,76 @@
+# Editing recipe, containerised: llama.cpp built from the unmerged qwen4exp PR, plus the
+# graph-reuse patch, for people who would rather not install a CUDA toolchain on the host.
+#
+#   docker build -t qwen38fn-edit -f recipes/llamacpp-edit/Dockerfile .
+#
+#   docker run -d --name qwen38fn-edit --gpus all --ipc=host \
+#     -p 127.0.0.1:8000:8000 \
+#     -v "$HOME/.qwen38fn/model:/model:ro" \
+#     qwen38fn-edit
+#
+# The model is NOT baked in - it is ~105 GB. Fetch it on the host first with
+# `./run.sh edit setup`, then mount it read-only as shown above.
+#
+# Building llama.cpp for GB10 takes a while. The runtime stage keeps only the binaries.
+
+ARG CUDA_IMAGE=nvidia/cuda:13.0.0-devel-ubuntu24.04
+FROM ${CUDA_IMAGE} AS build
+
+ARG PR=27742
+# Pinned to the commit the patches in patches/ are known to apply to. PR_SHA=head tracks the
+# branch tip instead, at which point the patches may not apply.
+ARG PR_SHA=035e227
+ARG CUDA_ARCH=121
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git cmake build-essential libcurl4-openssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone https://github.com/ggml-org/llama.cpp.git . \
+ && git fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force \
+ && git checkout -q "${PR_SHA}"
+
+# canreuse-qwen4exp: implements can_reuse() for the qwen4exp graph inputs so CUDA graph capture
+# engages at all. Without it the graph is rebuilt every token and decode is measurably worse.
+COPY patches/ /patches/
+RUN git apply --verbose /patches/canreuse-qwen4exp.patch \
+ && echo "canreuse patch applied"
+
+RUN cmake -B build \
+      -DGGML_CUDA=ON \
+      -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCH}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLLAMA_CURL=ON \
+ && cmake --build build --config Release -j"$(nproc)" --target llama-server llama-cli
+
+FROM ${CUDA_IMAGE%-devel-*}-runtime-ubuntu24.04 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libcurl4 libgomp1 ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /src/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=build /src/build/bin/llama-cli    /usr/local/bin/llama-cli
+
+ENV MODEL=/model/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf \
+    CTX=262144 \
+    SPEC=ngram-mod \
+    ALIAS=qwen3.8-flash-next
+
+EXPOSE 8000
+
+# -ot per_layer_token_embd=CPU  keeps the 51.2B n-gram table off the GPU
+# -lm mmap                      serves that table from NVMe via the page cache
+# --parallel 1                  concurrent requests queue rather than speeding anything up
+SHELL ["/bin/bash", "-c"]
+CMD llama-server \
+      -m "$MODEL" \
+      --alias "$ALIAS" \
+      -lm mmap \
+      -ot "per_layer_token_embd=CPU" \
+      --n-gpu-layers 999 \
+      --ctx-size "$CTX" \
+      --parallel 1 \
+      $( [ "$SPEC" != none ] && echo --spec-type "$SPEC" ) \
+      --temp 1.0 --top-p 0.95 --top-k 20 \
+      --host 0.0.0.0 --port 8000

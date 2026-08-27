@@ -1,171 +1,135 @@
 # Qwen3.8-Flash-Next on a DGX Spark
 
-A reproducible recipe for running **Qwen3.8-Flash-Next** — a 180B-parameter model — on a single
-NVIDIA DGX Spark (GB10, 128 GB unified memory) with llama.cpp, at Q4 quantization and the full
+Run a **180-billion-parameter model** on one desktop box with 128 GB of memory, at its full
 262,144-token context.
 
-The trick that makes it fit: 51.2B of the model's 180B parameters are a single n-gram embedding
-table that is never multiplied, only looked up. It can live on NVMe instead of in memory.
+The trick that makes it fit: 51.2B of the model's 176.9B parameters are a single lookup table
+that is never multiplied by anything — only read from. It can live on your SSD instead of in
+memory. That leaves 125.7B parameters of actual compute to fit in the box, which they do.
 
-To be clear about what this is and isn't: a single Spark decodes at **~22 tok/s** with this setup.
-That is not fast in absolute terms. The interesting result is that a 180B model runs *at all* in
-128 GB, with full context, and that serving a quarter of its parameters from NVMe costs almost
-nothing.
+---
 
-## Why the 51B-on-NVMe trick works
+## Start here: which setup do you want?
 
-Qwen3.8-Flash-Next's 180B parameters split into:
+There are two, and **they are good at genuinely different things.** Picking the wrong one costs
+you a factor of two, so it is worth thirty seconds.
 
-| Block | Params | Role |
-|---|---|---|
-| Compute (MoE experts, attention, GDN, ...) | 128.8B | Matmuls — must be resident |
-| n-gram / PLE embedding table | 51.2B | Pure lookup — does not need to be resident |
+|                                            | **Editing** | **Writing & long documents** |
+|--------------------------------------------|-------------|------------------------------|
+| Best for                                    | coding agents, rewriting files, refactors | chat, reasoning, summarising big documents |
+| Rewriting a file with one change            | **88 tokens/sec** | 39 |
+| Fixing a bug in a file                      | **46** | 35 |
+| Writing prose                               | 28 | **32** |
+| Time to start answering (short prompt)      | ~1–2 s | **~0.3 s** |
+| Reading a 128,000-token document            | ~4 min | **~56 s** |
+| Speed at very long context                  | degrades | **stays flat** |
+| Handles more than one request at a time     | no | yes, two |
+| Disk needed                                 | 105 GB | 126 GB |
 
-The table is one tensor, `per_layer_token_embd.weight`, shape `[160, 320001536]`. It is never
-part of a matrix multiply: per generated token the model *gathers* about 16 rows out of
-320,001,536. Embedding tables are sparsely accessed and deterministically addressed, so they can
-live in off-accelerator storage — Qwen's own tech report makes this point about scaling n-gram
-vocabulary. We pin the tensor to the CPU backend and let mmap serve it from NVMe:
+**Rule of thumb**
 
-```
--ot "per_layer_token_embd=CPU"  -lm mmap
-```
+- A coding agent drives it, and it mostly rewrites files you give it → **Editing**
+- You talk to it, ask it questions, or feed it long documents → **Writing & long documents**
+- Not sure → start with **Writing & long documents**. It is the more even performer, and its
+  fast document reading is the difference you will feel first.
 
-Result: the model file is 103.7 GiB but only ~76.9 GiB is resident. Process RSS is ~1.4 GiB — the
-table is served by the OS page cache backed by NVMe. See
-[docs/how-it-works.md](docs/how-it-works.md) for the full memory arithmetic.
+You can install both. They use the same GPU, so only one runs at a time.
 
-## Measured results
+---
 
-Hardware: DGX Spark (GB10, SM121), 121 GiB usable, ~273 GB/s memory bandwidth, CUDA 13.0, aarch64.
-Model: `unsloth/Qwen3.8-Flash-Next-GGUF`, UD-Q4_K_XL (103.7 GiB, 4 shards).
+## Install
 
-Decode and prefill vs. context length (server-reported timings; prefill excluded from decode):
+You need an NVIDIA DGX Spark or compatible GB10 box (128 GB unified memory), a recent driver
+with Docker, and free disk space per the table above.
 
-| Prompt tokens | Prefill tok/s | Decode tok/s | Major faults/token |
-|---:|---:|---:|---:|
-| 226 | 355 | 22.34 | 2.7 |
-| 1,659 | 632 | 22.14 | 2.0 |
-| 6,443 | 662 | 21.28 | 1.4 |
-| 19,197 | 499 | 19.50 | 1.3 |
-
-Decode degrades only ~13% from 226 to 19k tokens of context.
-
-Table warming A/B (`tools/warm_table.py`):
-
-| State | Table cached | Major faults/token | Decode tok/s |
-|---|---:|---:|---:|
-| Cold | 1.3% | 13.1 | 21.05 |
-| Warmed | 79% | 2.1 | 22.40 |
-
-**Important caveat, measured later:** the +6% above was measured with speculation OFF. With
-`--spec-type ngram-mod` enabled, warming is worth far more — up to **+42%** on copy-heavy work
-(52.6 -> 74.6 tok/s). Verifying a 50-60 token span touches many n-gram rows at once, so major
-faults cost proportionally more than during one-token-at-a-time decode. See
-[bench/results.md](bench/results.md).
-
-
-Warming costs one sequential 26.8 GiB read (~26 s) and cuts major faults ~6x — but buys only
-~+6% throughput. In other words: **keeping the table on NVMe is nearly free.** That is the
-headline result. Full details and reproduction steps in [docs/benchmarks.md](docs/benchmarks.md).
-
-Other measured facts:
-
-- Load time: ~3m35s from NVMe.
-- Steady state: ~95 GiB used, ~26 GiB page cache, process RSS ~1.4 GiB.
-- Full 262,144-token context works. KV cache is only 24 KB/token (12 of 48 layers use full
-  attention, GQA with 2 KV heads), so 262k tokens cost just 6 GiB.
-
-## Quick start
-
-1. Build llama.cpp with the unmerged PR [#27742](https://github.com/ggml-org/llama.cpp/pull/27742)
-   (qwen4exp architecture support), plus the two patches in [`patches/`](patches/) (recommended,
-   see below).
-2. Download `unsloth/Qwen3.8-Flash-Next-GGUF` (UD-Q4_K_XL, 4 shards, 103.7 GiB).
-3. Start the server:
-
-```
-./run.sh
+```bash
+git clone https://github.com/0xBakeer/qwen38-flash-next-spark.git
+cd qwen38-flash-next-spark
 ```
 
-4. Optionally warm the embedding table (one 26.8 GiB sequential read, ~26 s):
+**Editing setup** — builds llama.cpp and downloads the model (~105 GB):
 
+```bash
+./run.sh edit setup
+./run.sh edit serve
 ```
-python3 tools/warm_table.py
+
+**Writing & long-document setup** — builds a container and downloads the model (~126 GB):
+
+```bash
+./run.sh longctx setup
+./run.sh longctx serve
 ```
 
-### Speculative decoding: large win on copy-heavy work
+Either one then answers on `http://localhost:8000/v1`, speaking the OpenAI API, so anything that
+talks to OpenAI talks to this: Open WebUI, coding agents, your own scripts.
 
-`run.sh` enables `--spec-type ngram-mod` by default. It drafts spans from repetition in the
-context, so it needs no draft model and no extra memory, and speculation is exact — the target
-verifies every token, so output is identical.
+First start takes a while — it is reading 100+ GB off disk. Later starts are faster.
 
-| Task | Cold table | Warm table |
-|---|---|---|
-| Reproduce a given file with one change | 52.6 | **74.6** |
-| Targeted bug fix in a given file | 46.0 | **51.6** |
-| Add a function to a given file | 32.4 | 30.4 |
-| Free-form prose (control) | 22.2 | 23.3 |
+Full instructions per setup:
+[recipes/llamacpp-edit](recipes/llamacpp-edit/) · [recipes/vllm-longctx](recipes/vllm-longctx/)
 
-The gain tracks how much of the output already appears in the prompt, which is exactly the
-shape of tool-driven editing. Free-form generation is unchanged. Disable with `SPEC=none`.
+---
 
-An external draft model was also tested (Qwen3.5-0.8B, vocab-compatible at 248320) and gave
-**no** speedup: mean accepted length 2.88 yet decode stayed ~23 tok/s. Speculative decoding
-normally amortizes one weight read over k tokens, but in a top-10-of-512 MoE, k tokens activate
-up to k*10 different experts, so weight traffic scales with k. `ngram-mod` wins instead by
-accepting very long spans (mean 50-60 tokens), which amortizes over the verify step rather than
-over the weight read.
+## One setting worth knowing
 
-## Known issues
+The model **thinks before it answers**, and you pay for every thought token even though you never
+see them. In our measurements **86% of generated tokens were reasoning.**
 
-Documented honestly — this is early, on an unmerged architecture port.
+Turning thinking off made the same answer arrive in **15 seconds instead of 55** — not because
+tokens got faster (they got slightly slower) but because there were far fewer of them.
 
-1. **Concurrency crashes.** Any second in-flight request aborts with
-   `src/models/qwen4exp.cpp:284: GGML_ASSERT(mctx_idx->get_n_kv() == inp->mctx->get_attn()->get_n_kv() && "the indexer cache must track the attention cache cell for cell") failed`.
-   Workaround: run with `--parallel 1`. Single-stream is stable.
-2. **Quantized KV cache aborts** on this architecture (`qwen4exp.cpp:544`). Keep KV at f16 — at
-   24 KB/token it is cheap anyway.
-3. **No speculative decoding.** The GGUF converter drops the MTP head
-   (`supports_mtp_export = False`), so no MTP draft exists. An external draft model was tested
-   (Qwen3.5-0.8B, vocab-compatible at 248320) and gave **no speedup**: mean accepted length 2.88,
-   decode stayed ~23 tok/s. Why: speculative decoding amortizes one weight read over k tokens,
-   but in a top-10-of-512 MoE, k tokens activate up to k×10 *different* experts — weight traffic
-   scales with k and the amortization never happens.
-4. **Requires unmerged llama.cpp PR #27742.** Expect churn until it lands.
+Add this to your request:
 
-## Patches
+```json
+{"chat_template_kwargs": {"enable_thinking": false}}
+```
 
-Two patches against llama.cpp ship in [`patches/`](patches/):
+Leave thinking on for hard reasoning and maths. Turn it off for everything else.
 
-- **`rowband-ple-quant.patch`** — `llama-quant.cpp` stages the whole dequantized tensor through an
-  f32 buffer; for this model's 51.2G-element table that is 204.8 GB, so quantizing it dies with
-  `std::bad_alloc` on any machine under ~200 GB RAM. The patch dequantizes in ≤2 GiB row bands.
-  Verified byte-identical to the unpatched output over 31,106,622,336 bytes. Only needed if you
-  quantize the model yourself.
-- **`canreuse-qwen4exp.patch`** — `llm_graph_input_qsa` and `llm_graph_input_ple` never override
-  `can_reuse()`, whose base implementation returns false, so the whole compute graph is rebuilt
-  and re-split every token and CUDA graph capture never engages (`graphs reused = 0`). The patch
-  implements `can_reuse()` for both. Measured effect here: graphs reused 0 → 1543, decode +2.8%.
+---
 
-## Credits
+## What the numbers actually mean
 
-- **Qwen** for the model and the tech report describing the n-gram/PLE design.
-- **Unsloth** for the GGUF quants and llama.cpp PR #27742.
-- **llama.cpp** for everything else.
+You will see very different speeds from the same model depending on what you ask it to do. That is
+not noise — it is the whole story of how these setups work, and it is worth understanding before
+you compare any two figures.
 
-MIT licensed.
+**The Editing setup drafts its guesses from your prompt.** When you paste a file and ask for one
+change, almost every token of the answer already exists in the question, so it can leap ahead
+60 tokens at a time and verify them in one pass. That is where 88 tokens/sec comes from. Ask it to
+write something new and there is nothing to copy, so it falls back to about 28.
+
+**The Writing setup drafts from a trained predictor** shipped inside the model. That works the same
+on any kind of text, so it lands near 32–39 whatever you ask — much steadier, lower at the top end.
+
+So: **a speed figure for this model is meaningless without the task attached to it.** Ours are all
+published with the task named, in [docs/measurements.md](docs/measurements.md).
+
+---
 
 ## Documentation
 
-- [docs/how-it-works.md](docs/how-it-works.md) - the 51B-on-NVMe mechanism and memory arithmetic
-- [docs/speculative-decoding.md](docs/speculative-decoding.md) - why throughput varies 3x by task,
-  and three ways of measuring it that give wrong answers
-- [docs/open-webui.md](docs/open-webui.md) - connecting it, and turning reasoning off
-- [docs/benchmarks.md](docs/benchmarks.md) and [bench/results.md](bench/results.md) - measurements
+**Start here**
+- [Choosing a setup](docs/choosing.md) — the longer version of the table above
+- [How it works](docs/how-it-works.md) — the SSD trick and the memory arithmetic
 
-## Sources
+**Measurements**
+- [All measurements](docs/measurements.md) — every number, how it was taken
+- [What we ruled out](docs/ruled-out.md) — five things that should have helped and did not
+- [Benchmarks](docs/benchmarks.md) — reproducing them yourself
 
-Model, weights, the required llama.cpp PR, upstream bug reports, the Qwen tech-report claim
-this whole approach rests on, and reference numbers from other hardware:
-[docs/sources.md](docs/sources.md).
+**Going deeper**
+- [Hardware notes](docs/hardware-notes.md) — GB10 specifics, and where the remaining performance is
+- [Speculative decoding](docs/speculative-decoding.md) — why throughput varies 3× by task
+- [Open WebUI](docs/open-webui.md) — connecting it to a chat interface
+- [Sources](docs/sources.md) — model, weights, upstream issues
+
+---
+
+## Credits
+
+This builds on other people's work — the model, the quantisations, the engines, and in particular
+the vLLM container that the long-context setup depends on. See [CREDITS.md](CREDITS.md).
+
+MIT licensed. The model weights carry Qwen's own licence, which has conditions of its own.
