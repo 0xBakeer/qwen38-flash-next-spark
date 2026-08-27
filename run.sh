@@ -45,7 +45,7 @@ case "${1:-}" in
     case "${1:-serve}" in
       setup) exec "$HERE/recipes/vllm-longctx/setup.sh" ;;
       serve) exec "$HERE/recipes/vllm-longctx/serve.sh" ;;
-      bench) shift; exec "$HERE/bench/portable_bench.py" --api http://127.0.0.1:8000 \
+      bench) shift; exec "$HERE/bench/portable_bench.py" --api "http://127.0.0.1:${PORT:-8000}" \
                      --label "${LABEL:-vllm-longctx}" "$@" ;;
       *) echo "unknown longctx command: $1" >&2; usage; exit 2 ;;
     esac
