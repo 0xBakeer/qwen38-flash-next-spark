@@ -72,8 +72,10 @@ it feel far more responsive regardless of throughput.
 It ingests 195,458 tokens in 90 seconds and holds ~2,200 tok/s across the whole window; the
 editing setup runs 253–486 tok/s and slows as context grows.
 
-**More than one person or tool at once.** Writing & long documents — but only two sequences.
-Neither setup is a multi-user server.
+**More than one person or tool at once.** Writing & long documents, and by a wide margin: it
+serves **16 concurrent requests** at 96–109 tok/s aggregate with first tokens still under
+2.7 s. Neither setup is a multi-user server, though — past 16, time to first token goes to
+16 s at 32 callers and 70 s at 64.
 
 ---
 

@@ -11,7 +11,7 @@
 #   PORT=8000        host port (loopback only - see BIND below)
 #   BIND=127.0.0.1   set to 0.0.0.0 to expose on your LAN. Think before you do.
 #   CTX=262144       max context. Native maximum; KV pool measured at 641,601 tokens.
-#   SEQS=2           concurrent sequences
+#   SEQS=16          concurrent sequences. Past 16, TTFT collapses - see README
 #   GPU_MEM=0.85     fraction of the 128 GB pool for weights + KV
 #   MTP=3            speculative tokens from the model's MTP head (0 disables)
 #   PREWARM=1        stream the n-gram table once at boot so the first request is not cold
@@ -27,7 +27,7 @@ HF_CACHE="${HF_CACHE:-$HOME/.cache/huggingface}"
 PORT="${PORT:-8000}"
 BIND="${BIND:-127.0.0.1}"
 CTX="${CTX:-262144}"
-SEQS="${SEQS:-2}"
+SEQS="${SEQS:-16}"
 GPU_MEM="${GPU_MEM:-0.85}"
 MTP="${MTP:-3}"
 PREWARM="${PREWARM:-1}"
