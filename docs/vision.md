@@ -90,4 +90,5 @@ Two things worth knowing before you compare numbers across it:
   eval duration at concurrency 4, which is not a tok/s number and should not be quoted as one.
 
 Source data: [inference-atlas results for this
-model](https://github.com/0xBakeer/inference-atlas/tree/main/results).
+model](https://github.com/0xBakeer/inference-atlas/tree/main/results). Index of everything
+measured there: [atlas.md](atlas.md).

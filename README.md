@@ -116,6 +116,7 @@ published with the task named, in [docs/measurements.md](docs/measurements.md).
 
 **Measurements**
 - [All measurements](docs/measurements.md) — every number, how it was taken
+- [Independent measurements](docs/atlas.md) — the same configurations through a harness we did not write
 - [What we ruled out](docs/ruled-out.md) — five things that should have helped and did not
 - [Benchmarks](docs/benchmarks.md) — reproducing them yourself
 
