@@ -41,6 +41,19 @@ claiming concurrent requests abort the server after that had been corrected ever
 Their commit is squashed into `93c457c`, which GitHub attributed to the repository owner on
 merge; the work and the diagnosis are theirs.
 
+**[Jürgen Schmied (@jschmied)](https://github.com/jschmied)** — three contributions in
+[#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6), all measured on their own
+DGX Spark with a non-public checkpoint, so the docs carry the first two as their results
+rather than ours. They report replicating our 6.5% single-run noise floor at 6.9% under vLLM
+with a different quantization and drafting mechanism — the claim that the ~10% single-run
+limit belongs to the platform rather than to llama.cpp is theirs, made possible by their run.
+They ran the in-engine MTP-off A/B the long-context recipe admitted it lacked (+35% at one caller,
+not measurable at 16 concurrent — speculation stops paying once the batch saturates the box).
+And they reported that `VLLM_TORCH_PROFILER_DIR` is inert in the Flash-Next preview build,
+along with the working `--profiler-config` form and the systemd quoting trap. They also
+withdrew one of their own published claims on endpoint-versus-spread grounds in the same
+report, which is the methodology being used the way it was meant to be.
+
 ## The container that makes the long-context recipe possible
 
 **[blazux/qwen3.8-Flash-DGX](https://github.com/blazux/qwen3.8-Flash-DGX)** (Apache-2.0) — the

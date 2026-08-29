@@ -140,6 +140,17 @@ this — one 26.8 GiB sequential read, ~26 s. Measured effect at the time:
 > against, within minutes. Any cold-versus-warm figure from that workload — including the
 > original +42% — describes its first few minutes and not the run.
 
+> **Third-party replication reported, 2026-08-29.** Jürgen Schmied reports six identical
+> vLLM runs on their own DGX Spark — same hardware model, a different physical box, and a
+> non-public checkpoint we cannot rerun
+> ([#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6)): 35.3, 35.7, 34.7,
+> 35.2, 36.1, 37.1 tok/s — mean 35.68, sd 0.84, spread **6.9%**, prefix-cache hits at zero
+> per their logs. Different engine, different quantization, different drafting mechanism
+> (MTP rather than n-gram), and a spread matching our 6.5%. If their numbers hold, "nothing
+> below roughly 10% is callable from single runs" is a property of the platform, not of
+> llama.cpp — but that stronger claim is theirs, on their stack; what this repository has
+> measured is only the llama.cpp side.
+
 **What we believed on 2026-08-26, and no longer do.** The +6% above was measured with
 speculation OFF. With `--spec-type ngram-mod` enabled, warming appeared to be worth far more —
 up to +42% on copy-heavy work (52.6 -> 74.6 tok/s) — on the reasoning that verifying a 50-60

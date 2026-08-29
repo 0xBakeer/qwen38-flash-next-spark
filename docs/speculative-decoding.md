@@ -52,11 +52,18 @@ and drops the head, so no MTP tensors exist in any GGUF of this model (verified 
 > shows. Modest, because on a top-10-of-512 MoE verifying *k* draft tokens activates the
 > union of experts across those positions. See
 > [../recipes/vllm-longctx](../recipes/vllm-longctx/) and [ruled-out.md](ruled-out.md).
+>
+> An in-engine MTP-off A/B has since been reported by a third party, on their own DGX Spark
+> and a different, non-public checkpoint
+> ([#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6)): **+35% at one
+> caller, not measurable at 16 concurrent** — their reading being that once the batch
+> saturates the box, draft tokens have no idle capacity to convert. Their numbers, on their
+> stack; details in the [long-context recipe README](../recipes/vllm-longctx/README.md).
 
-## Three ways to measure this wrong
+## Four ways to measure this wrong
 
-All three produced plausible numbers that were wrong. They are listed because each is a natural
-thing to do.
+All four produced plausible numbers that were wrong — three here, one reported from outside.
+They are listed because each is a natural thing to do.
 
 ### 1. Repeating an identical prompt
 
@@ -105,6 +112,23 @@ Throughput depends on the ratio of copied to generated tokens in the *output*. A
 tokens of a 1300-token file and it is still copying, so it stays fast. Ask for 1600 and it
 finishes the file and continues into freshly generated commentary at ~22 tok/s, dragging the
 average down. The same task measured 171 tok/s at one `max_tokens` and 52 at another.
+
+### 4. Calling a difference from single runs
+
+Identical single runs on this box spread by **6.5%** with nothing changed between them,
+measured here under llama.cpp; a matching **6.9%** spread has been reported under vLLM on
+another DGX Spark with a different quantization and drafter
+([#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6) — their stack, not rerun
+here). So two single runs that
+differ by less than roughly 10% support no conclusion: either endpoint may just be the top or
+bottom of its own spread.
+
+This one has now claimed a casualty on each side. Here, both the original "+42% from warming"
+and its first retraction were single-run comparisons inside that regime. Outside, a published
+"k=2 is the optimum, k=3 is past it" was withdrawn by its own author in
+[#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6) when k=2's 38.0 turned out
+to be the top of its spread and k=3's 36.8 sat inside it, above the mean. Compare means of
+repeated runs, or report the spread alongside the difference.
 
 ## Reasoning tokens hide all of this
 

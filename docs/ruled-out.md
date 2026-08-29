@@ -36,7 +36,11 @@ the warmer cannot reach a useful residency at all. From a genuine cold start (0.
 reads all 26.8 GiB at 1.01 GiB/s and lands at **25.9%**, because once the model load has taken its
 share of the 121 GiB box the page cache has nowhere to put the rest. Decode at 25.88% is 34.12
 tok/s against 34.99 and 37.43 for two runs at 0.06% — inside the spread of the cold runs, which
-differ from each other by 6.5%.
+differ from each other by 6.5%. A matching **6.9%** spread has since been reported under vLLM on
+another DGX Spark, with a different quantization and drafter
+([#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6)) — a third-party result on a
+stack we cannot rerun, but consistent with the single-run noise floor belonging to the platform
+rather than to llama.cpp.
 
 Also ruled out, for the same reason: **holding the table at a chosen residency**. 18% established
 before startup is evicted to 0.06% by the model load; 18% after startup reaches 11.43%; 58%
