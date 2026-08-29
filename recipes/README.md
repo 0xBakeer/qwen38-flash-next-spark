@@ -4,7 +4,7 @@ Two working setups, plus the ones we tried and rejected.
 
 | | [llamacpp-edit](llamacpp-edit/) | [vllm-longctx](vllm-longctx/) |
 |---|---|---|
-| Engine | llama.cpp, PR #27742 + patches | vLLM 0.1.dev20073, NVFP4 |
+| Engine | llama.cpp @ `035e227` (PR #27742, since merged) + patches | vLLM 0.1.dev20073, NVFP4 |
 | Speculation | `ngram-mod` — copies from your prompt | MTP — the model's trained draft head |
 | Best at | rewriting files (**88.5 tok/s**) | prose (**32.2**), prefill (**~2,300**), long context |
 | Worst at | prose (27.8), prefill (253–486) | file rewriting (39.1) |

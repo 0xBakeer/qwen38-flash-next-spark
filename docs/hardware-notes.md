@@ -80,7 +80,8 @@ against the 50× pathology, superseded by the zero-copy approach above.
 
 **Rebase onto current llama.cpp master.** Upstream now fuses softmax+top-k MoE routing and GEMV;
 NVIDIA measured an average **35% MoE uplift** on DGX Spark from those changes. Our build is from
-an unmerged PR that may predate or miss fusion coverage for the qwen4exp graph shape.
+a pre-merge PR commit that may predate or miss fusion coverage for the qwen4exp graph shape
+(the PR has since merged; this has not been re-measured on master).
 
 **Try the IQ quant series.** Our Q3_K result says lower-bit K-quants are slower here, but that is
 a K-quant kernel property. Independent reports show IQ4_XS at 27 tok/s against IQ1_S at 33 — 23%

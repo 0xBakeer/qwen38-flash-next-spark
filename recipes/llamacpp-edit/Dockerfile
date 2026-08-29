@@ -17,8 +17,10 @@ ARG CUDA_IMAGE=nvidia/cuda:13.0.0-devel-ubuntu24.04
 FROM ${CUDA_IMAGE} AS build
 
 ARG PR=27742
-# Pinned to the commit the patches in patches/ are known to apply to. PR_SHA=head tracks the
-# branch tip instead, at which point the patches may not apply.
+# PR #27742 merged upstream on 2026-08-27, and both patches in patches/ went in with it or
+# were superseded by equivalent upstream work. REF=master builds the merged code with no
+# patches; REF=pinned (the default) builds the exact commit the numbers in docs/ came from.
+ARG REF=pinned
 ARG PR_SHA=035e227
 ARG CUDA_ARCH=121
 
@@ -27,15 +29,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-RUN git clone https://github.com/ggml-org/llama.cpp.git . \
- && git fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force \
- && git checkout -q "${PR_SHA}"
-
-# canreuse-qwen4exp: implements can_reuse() for the qwen4exp graph inputs so CUDA graph capture
-# engages at all. Without it the graph is rebuilt every token and decode is measurably worse.
 COPY patches/ /patches/
-RUN git apply --verbose /patches/canreuse-qwen4exp.patch \
- && echo "canreuse patch applied"
+RUN git clone https://github.com/ggml-org/llama.cpp.git . \
+ && if [ "${REF}" = "master" ]; then \
+      git fetch --depth 50 origin master --force && git checkout -q FETCH_HEAD \
+      && echo "built from master; patches/ are upstream and were not applied"; \
+    else \
+      git fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force \
+      && git checkout -q "${PR_SHA}" \
+      && git apply --verbose /patches/canreuse-qwen4exp.patch \
+      && echo "canreuse patch applied"; \
+    fi
 
 RUN cmake -B build \
       -DGGML_CUDA=ON \
