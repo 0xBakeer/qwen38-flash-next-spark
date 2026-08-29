@@ -188,26 +188,42 @@ aggregate throughput and costs 27x on first-token latency.
 The sweep varies offered concurrency against a 64-slot server, so it shows where the box
 stops serving well — not what the `SEQS` cap itself costs. That direct A/B now exists too,
 published in [inference-atlas](https://github.com/0xBakeer/inference-atlas): the same pinned
-workloads, same box, one arm at `SEQS=2` and one at `SEQS=64`, every request completing in
-both. Only `max-num-seqs` changes between the columns:
+workloads, same box, one arm at `SEQS=2` and one at `SEQS=64`. Only `max-num-seqs` changes
+between the columns:
 
-| workload | `SEQS=2` tok/s | `SEQS=64` tok/s | TTFT p50, 2 → 64 |
-|---|---:|---:|---:|
-| serve-single (1 caller) | 30.96 | 30.89 | 0.52 s → 0.53 s |
-| prefill-8k (1 caller) | 3.07 | 2.89 | 4.5 s → 4.5 s |
-| prefill-32k (1 caller) | 0.84 | 0.86 | 18.1 s → 17.5 s |
-| serve-chat-c8 (8 concurrent) | 43.4 | 81.4 (**1.88×**) | 36.3 s → **1.4 s** |
-| serve-short-c16 (16 concurrent) | 53.9 | 146.7 (**2.72×**) | 33.5 s → **1.2 s** |
+| workload | concurrent | `SEQS=2` tok/s | `SEQS=64` tok/s | TTFT p50, 2 → 64 |
+|---|---:|---:|---:|---:|
+| serve-single | 1 | 30.95 | 30.89 | 0.5 s → 0.5 s |
+| prefill-8k | 1 | 3.07 | 2.89 | 4.5 s → 4.5 s |
+| prefill-32k | 1 | 0.84 | 0.86 | 18.1 s → 17.5 s |
+| prefill-128k | 1 | 0.21 | 0.20 | 76.7 s → 77.8 s |
+| serve-long-c4 | 4 | 28.09 | 34.15 (1.22×) | 42.9 s → 7.9 s |
+| serve-chat-c8 | 8 | 43.36 | 81.41 (1.88×) | 36.3 s → **1.4 s** |
+| serve-code-c8 | 8 | 41.32 | 78.57 (1.90×) | 150.8 s → **2.4 s** |
+| serve-prefix-c16 | 16 | 27.72 | 46.50 (1.68×) | 127.7 s → 5.9 s |
+| serve-short-c16 | 16 | 53.93 | 146.73 (**2.72×**) | 33.5 s → **1.2 s** |
+| serve-chat-c32 | 32 | 42.98 | 105.00 (2.44×) | 178.8 s → 18.4 s |
+| serve-chat-c64 | 64 | 42.90 | 105.48 (2.46×) | 294.9 s → 95.9 s |
 
-(Cells are the atlas `output_tok_s` value. The prefill workloads emit almost no output
-tokens, hence the small numbers; their prefill throughputs — 2,170 vs 2,031 tok/s at 8k,
-2,176 vs 2,230 at 32k — also sit inside the single-run noise floor.)
+(Cells are the atlas `output_tok_s` value. The prefill workloads emit almost no output tokens,
+hence the small numbers; their prefill throughputs — 2,170 vs 2,031 tok/s at 8k, 2,176 vs 2,230
+at 32k — also sit inside the single-run noise floor.)
 
-The one-caller rows are identical — the cap costs nothing when the server is quiet. The
-loaded rows are the price of shipping `2`: sixteen short callers get 53.9 tok/s aggregate
-and a **33.5 s** median first token from the 2-slot server, against 146.7 tok/s and
-**1.2 s** with the cap lifted. This is stronger evidence for raising the default than the
-sweep above, because it isolates the cap: same workloads, same box, one variable.
+**All four one-caller rows are identical.** The cap costs nothing when the server is quiet,
+which is the whole reason raising it is safe. Every loaded row is 1.2–2.7× better with the cap
+lifted, and the first-token column is where it really shows: eight callers sending 2k-token
+prompts wait **150.8 seconds** for a first token at two slots against 2.4 s at sixty-four, a
+63× difference.
+
+**The 64-caller row understates the gap, and should be read with its footnote.** At `SEQS=2`
+that cell completed only **513 of 640 requests** — the median caller waited 294.9 s for a first
+token, which is the workload's own 300 s budget, so the tail simply ran out of time. It is the
+only cell in either arm that lost requests. A configuration that fails a fifth of its callers is
+not really delivering 42.9 tok/s, so treat 2.46× as a floor on the difference rather than a
+measurement of it.
+
+This is stronger evidence for raising the default than the sweep above, because it isolates the
+cap: same workloads, same box, one variable.
 
 We ship `SEQS=16` for that reason. It is a cap, not a batch size — with one caller it behaves
 exactly like `SEQS=2`, so nothing is lost when the server is quiet, and a burst of up to 16 is
