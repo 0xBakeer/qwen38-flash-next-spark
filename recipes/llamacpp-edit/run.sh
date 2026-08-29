@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Qwen3.8-Flash-Next on a DGX Spark / GB10, with the 51B n-gram table left on NVMe.
 #
-#   ./run.sh setup    build llama.cpp (PR #27742 + patches) and fetch the model
+#   ./run.sh setup    build llama.cpp and fetch the model
 #   ./run.sh serve    warm the n-gram table, then start llama-server
 #   ./run.sh bench    quick decode/prefill measurement against a running server
 #   ./run.sh all      setup, then serve
@@ -15,8 +15,19 @@ MODEL_DIR="${MODEL_DIR:-$ROOT/model}"
 REPO="${REPO:-unsloth/Qwen3.8-Flash-Next-GGUF}"
 QUANT="${QUANT:-UD-Q4_K_XL}"
 PR="${PR:-27742}"
-# The PR is active, so its tip moves. Pin a commit the patches in patches/ are known to
-# apply to; PR_SHA=head tracks the branch tip instead (patches may then not apply).
+# PR #27742 (qwen4exp support) MERGED upstream on 2026-08-27, and both patches in patches/
+# are now redundant: upstream implemented can_reuse() for the qwen4exp graph inputs itself,
+# and rewrote the quantizer to stage rows in slabs bounded by max_buf_size, which is what
+# rowband-ple-quant did. Neither patch applies to master any more, and neither needs to.
+#
+#   REF=pinned   (default) the exact PR commit every number in this repo was measured on,
+#                with the patches applied. Reproduces the published measurements.
+#   REF=master   upstream master, no patches. What you want for new work.
+#   REF=<sha>    any commit; patches are attempted and skipped if they do not apply.
+#
+# The default is still the pin because that is what the measurements in docs/ were taken
+# on, and a recipe whose numbers you cannot reproduce is not much of a recipe.
+REF="${REF:-pinned}"
 PR_SHA="${PR_SHA:-035e227}"
 CUDA_ARCH="${CUDA_ARCH:-121}"          # GB10 is SM 12.1; cmake promotes this to 121a
 CTX="${CTX:-262144}"                   # KV is only ~24 KB/token, so full context is affordable
@@ -71,34 +82,52 @@ setup() {
     git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$SRC"
   fi
 
-  log "fetching PR #${PR} (qwen4exp support - not yet merged upstream)"
-  git -C "$SRC" fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force 2>/dev/null || true
-  if [ "$PR_SHA" = "head" ]; then
-    git -C "$SRC" checkout -q qwen4exp
+  local want="$REF"
+  [ "$want" = "pinned" ] && want="$PR_SHA"
+
+  if [ "$want" = "master" ]; then
+    # qwen4exp is in master since 2026-08-27, so there is no PR to fetch.
+    log "fetching upstream master (qwen4exp merged 2026-08-27 via PR #${PR})"
+    git -C "$SRC" fetch --depth 50 origin master --force
+    git -C "$SRC" checkout -q FETCH_HEAD
   else
-    git -C "$SRC" checkout -q "$PR_SHA" 2>/dev/null || {
-      echo "NOTE: pinned commit $PR_SHA not reachable; falling back to the branch tip."
-      echo "      The patches may not apply - check the log below."
-      git -C "$SRC" checkout -q qwen4exp
+    log "fetching PR #${PR} for the pinned commit ${want}"
+    git -C "$SRC" fetch --depth 50 origin "pull/${PR}/head:qwen4exp" --force 2>/dev/null || true
+    git -C "$SRC" checkout -q "$want" 2>/dev/null || {
+      echo "NOTE: commit $want not reachable; falling back to the merged branch tip."
+      git -C "$SRC" fetch --depth 50 origin master --force
+      git -C "$SRC" checkout -q FETCH_HEAD
+      want=master
     }
   fi
   log "at $(git -C "$SRC" log --oneline -1)"
 
-  local applied=0 skipped=0
-  for p in "$HERE"/patches/*.patch; do
-    [ -e "$p" ] || continue
-    if git -C "$SRC" apply --check "$p" 2>/dev/null; then
-      log "applying $(basename "$p")"
-      git -C "$SRC" apply "$p"; applied=$((applied+1))
-    elif git -C "$SRC" apply --reverse --check "$p" 2>/dev/null; then
-      log "$(basename "$p") already applied"; applied=$((applied+1))
-    else
-      echo "WARNING: $(basename "$p") does not apply to this checkout - building without it."
-      echo "         See docs/sources.md; try PR_SHA=035e227 for the pinned commit."
-      skipped=$((skipped+1))
+  # Both patches are upstream as of master. Attempting them there produces two scary
+  # "does not apply" warnings for work that is already in the tree, so do not attempt them.
+  if [ "$want" = "master" ]; then
+    log "skipping patches/: both are upstream in master (can_reuse for the qwen4exp graph"
+    log "  inputs, and slab-bounded staging in the quantizer). Nothing to apply."
+  else
+    local applied=0 skipped=0
+    for p in "$HERE"/patches/*.patch; do
+      [ -e "$p" ] || continue
+      if git -C "$SRC" apply --check "$p" 2>/dev/null; then
+        log "applying $(basename "$p")"
+        git -C "$SRC" apply "$p"; applied=$((applied+1))
+      elif git -C "$SRC" apply --reverse --check "$p" 2>/dev/null; then
+        log "$(basename "$p") already applied"; applied=$((applied+1))
+      else
+        echo "WARNING: $(basename "$p") does not apply to this checkout - building without it."
+        echo "         If this is master or near it, that is expected: both patches are"
+        echo "         upstream. Use REF=master to skip them cleanly, or REF=pinned to"
+        echo "         reproduce the measurements in docs/. See docs/sources.md."
+        skipped=$((skipped+1))
+      fi
+    done
+    if [ "$skipped" -gt 0 ]; then
+      echo "WARNING: ${skipped} patch(es) skipped, ${applied} applied."
     fi
-  done
-  [ "$skipped" -gt 0 ] && echo "WARNING: ${skipped} patch(es) skipped, ${applied} applied."
+  fi
 
   log "building for SM ${CUDA_ARCH} with ${JOBS} jobs (this takes a while)"
   cmake -S "$SRC" -B "$SRC/build" \

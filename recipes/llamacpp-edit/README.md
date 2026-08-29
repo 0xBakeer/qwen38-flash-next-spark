@@ -33,7 +33,7 @@ running without it. You are not trading quality for speed.
 ## Install
 
 ```bash
-./run.sh setup    # builds llama.cpp (PR #27742 + patches), fetches ~105 GB
+./run.sh setup    # builds llama.cpp, fetches ~105 GB
 ./run.sh serve    # starts on http://localhost:8000/v1
 ./run.sh bench    # measures the four tasks above
 ```
@@ -71,14 +71,22 @@ quality reasons, not for speed.
 - **Quantized KV aborts** on this architecture. Keep it at f16; at ~24 KB/token it is cheap.
 - **No MTP.** The GGUF converter drops the model's trained draft head — we confirmed zero MTP
   tensors across all four shards. If you want that, use the other recipe.
-- **Built from an unmerged PR** (#27742). Expect churn until it lands.
+- **The default build is a pinned pre-merge commit.** PR #27742 merged upstream on
+  2026-08-27, so qwen4exp is in master now. `run.sh` still defaults to the PR commit
+  `035e227` plus the patches, because that is the build every number in this repo was
+  measured on. `REF=master ./run.sh setup` builds the merged code instead, with no patches —
+  see [../../docs/sources.md](../../docs/sources.md).
 
 ## Patches
 
-Two, in [`../../patches/`](../../patches/):
+Two, in [`../../patches/`](../../patches/). **Both are upstream as of master** — they apply
+to the pinned pre-merge commit and are skipped automatically under `REF=master`.
 
 - **`canreuse-qwen4exp.patch`** — implements `can_reuse()` for the qwen4exp graph inputs so CUDA
   graph capture engages at all. Without it the graph is rebuilt every token. This is why our prose
   figure (27.8) is well above the 19–25 tok/s others report for the same quant on the same box.
+  Master implements `can_reuse()` on both graph inputs itself.
 - **`rowband-ple-quant.patch`** — only needed if you quantize the model yourself. Staging the
   51.2B table through an f32 buffer needs 204.8 GB; this dequantizes in ≤2 GiB row bands.
+  Master processes rows in slabs bounded by `max_buf_size`, which does the same thing for
+  every tensor rather than for this one.

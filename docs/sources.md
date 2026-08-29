@@ -17,12 +17,36 @@ Everything this recipe depends on, and where the claims in the docs come from.
 | What | Where |
 |---|---|
 | llama.cpp | https://github.com/ggml-org/llama.cpp |
-| PR #27742 — `qwen4exp` support. **Required; not merged at time of writing.** | https://github.com/ggml-org/llama.cpp/pull/27742 |
+| PR #27742 — `qwen4exp` support. **Merged 2026-08-27** (65 commits, merge commit `6c84c7d`). | https://github.com/ggml-org/llama.cpp/pull/27742 |
 | Upstream feature request that preceded it | https://github.com/ggml-org/llama.cpp/issues/27741 |
 
-`run.sh` pins the PR to a known-good commit (`PR_SHA`) so the patches in `patches/` apply
-cleanly. Set `PR_SHA=head` to track the branch tip instead, at the cost of the patches
-possibly no longer applying.
+### The PR merged, and both patches went with it
+
+qwen4exp is in llama.cpp master as of 2026-08-27. Neither patch in `patches/` applies to
+master any more, and neither is needed there:
+
+- **`canreuse-qwen4exp.patch`** — master implements `can_reuse()` on both qwen4exp graph
+  inputs itself (`llm_graph_input_qsa` and `llm_graph_input_ple` in
+  `src/models/qwen4exp.cpp`), which is the same mechanism the patch added.
+- **`rowband-ple-quant.patch`** — master rewrote the quantizer loop to process rows in slabs
+  bounded by `max_buf_size` (`src/llama-quant.cpp`, "process the rows in slabs"), which
+  removes the whole-tensor f32 staging buffer the patch existed to avoid. Both fixes are
+  the same shape; upstream's is more general, since it bounds every tensor rather than the
+  PLE table specifically.
+
+Checked by `git apply --check` against master at `c841aee` on 2026-08-30: both patches fail
+to apply, and the code they would have added is present.
+
+`REF` selects what gets built:
+
+| `REF` | What you get |
+|---|---|
+| `pinned` (default) | PR commit `035e227` plus the patches — the exact build every number in this repo was measured on |
+| `master` | upstream master, no patches — what you want for new work |
+| any sha | that commit; patches are attempted and skipped if they do not apply |
+
+The default is still the pin, because a recipe whose published numbers you cannot reproduce
+is not much of a recipe. Re-measuring on master is tracked separately.
 
 ## Where specific claims come from
 

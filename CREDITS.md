@@ -4,6 +4,10 @@ This repository is a thin layer over other people's work. What is genuinely ours
 measurement methodology, the `canreuse-qwen4exp` and `rowband-ple-quant` patches, the serving
 configurations, and the documentation. Everything below is somebody else's.
 
+Both patches have since been overtaken by upstream: llama.cpp master implements `can_reuse()`
+for the qwen4exp graph inputs and bounds the quantizer's staging buffer itself. They remain here
+because the published measurements were taken with them applied, on a pre-merge commit.
+
 ## The model
 
 **[Qwen](https://qwen.ai)** — Qwen3.8-Flash-Next, and the tech report describing the n-gram / PLE
@@ -15,7 +19,8 @@ conditions of its own; read it before deploying commercially.
 **[Unsloth](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF)** — the dynamic GGUF quants
 used by the editing recipe, and llama.cpp PR
 [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) which adds qwen4exp architecture
-support. Without that PR none of this runs at all.
+support. Without that PR none of this runs at all. It merged upstream on 2026-08-27, and the
+merged code subsumes both patches this repo carries.
 
 **[RadixArk](https://huggingface.co/RadixArk/Qwen3.8-Flash-Next-NVFP4)** — the NVFP4 checkpoint
 used by the long-context recipe, which retains all 31 MTP tensors and is therefore the only route
