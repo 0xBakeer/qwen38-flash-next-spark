@@ -18,7 +18,7 @@ fills up. It is *not* the one to use if a coding agent is rewriting whole files 
 | Spread across those four | **1.2×** (the edit recipe swings 3.2×) |
 | Time to first token, short prompt | **~0.3 s** |
 | Prefill | **~2,200–2,460 tok/s**, flat to 195k tokens (independently ~2,030–2,230, see below) |
-| Vision | **works** — 0.967 on the atlas image eval, where the GGUF recipe cannot do it at all |
+| Vision | **works** — 0.967 on the atlas image eval, and 2.6× faster than the GGUF recipe, which also scores 0.967 |
 | Decode at 1k / 32k / 128k context | 31.7 / 33.5 / 31.7 — **no falloff** |
 | Concurrent requests | **16** served well; 64 possible for batch work |
 | Aggregate decode, 16 concurrent | **96–109 tok/s**, TTFT under 2.7 s |
@@ -67,16 +67,22 @@ configuration is not merely present but correct. **`hallucination` at 0.387** is
 benchmark that measures whether a model declines to answer what it does not know; a low score
 there is normal and is not a fault of this configuration.
 
-## Vision works here, and does not in the other recipe
+## Vision works here, and it is faster — but it is no longer exclusive
 
 The NVFP4 checkpoint carries the full vision tower — **333 tensors, 448,931,056 parameters,
 unquantized** — verified by tensor name in the shards actually served. It scores **0.967** on the
-atlas image eval.
+atlas image eval, 58 of 60.
 
-The GGUF quantization of the same model contains none of it: llama.cpp ships multimodal as a
-separate projector file, so [../llamacpp-edit](../llamacpp-edit/) is text-only unless you fetch
-an `mmproj` from a third repository and pass `--mmproj`. If you need image input, that is a
-reason to choose this recipe that has nothing to do with throughput.
+This section used to say the other recipe could not do images at all. That was wrong. The GGUF
+shards do contain none of the vision tower, but llama.cpp ships multimodal as a separate
+projector and Unsloth publishes one in the same repository as the quants — so
+[../llamacpp-edit](../llamacpp-edit/) fetches it in `setup` and scores **0.967 as well**, with
+identical per-category splits.
+
+What remains true is speed: the same 60 images take **233 s here against 598 s there**, and this
+recipe generated 13% fewer tokens and used 2.5× less energy doing it. Some of that gap is
+queueing — the eval runs at concurrency 4, which this recipe absorbs and two llama.cpp slots do
+not. Full comparison: [../../docs/vision.md](../../docs/vision.md).
 
 ## Why it behaves this way
 

@@ -29,6 +29,12 @@ PR="${PR:-27742}"
 # on, and a recipe whose numbers you cannot reproduce is not much of a recipe.
 REF="${REF:-pinned}"
 PR_SHA="${PR_SHA:-035e227}"
+# Vision. The GGUF shards carry no vision tensors - llama.cpp ships multimodal as a separate
+# projector - so image input needs an mmproj file. Unsloth publishes one in the same repo as
+# the quants, so this is a 0.9 GiB extra download, not a hunt through a third repository.
+# MMPROJ=none turns it off; MMPROJ=<path> points at your own.
+MMPROJ="${MMPROJ:-auto}"
+MMPROJ_FILE="${MMPROJ_FILE:-mmproj-F16.gguf}"
 CUDA_ARCH="${CUDA_ARCH:-121}"          # GB10 is SM 12.1; cmake promotes this to 121a
 CTX="${CTX:-262144}"                   # KV is only ~24 KB/token, so full context is affordable
 HOST="${HOST:-127.0.0.1}"
@@ -146,6 +152,12 @@ setup() {
     python3 -m pip install -q --upgrade huggingface_hub >/dev/null 2>&1 || true
     HF_XET_HIGH_PERFORMANCE=1 hf download "$REPO" --include "${QUANT}/*" --local-dir "$MODEL_DIR"
   fi
+
+  if [ "$MMPROJ" != "none" ] && [ ! -f "$MODEL_DIR/$MMPROJ_FILE" ] && [ ! -f "$MMPROJ" ]; then
+    log "downloading ${MMPROJ_FILE} (~0.9 GiB, gives the GGUF image input)"
+    HF_XET_HIGH_PERFORMANCE=1 hf download "$REPO" --include "$MMPROJ_FILE" --local-dir "$MODEL_DIR" \
+      || echo "WARNING: mmproj download failed - the server will still start, text-only."
+  fi
   log "setup complete"
 }
 
@@ -155,6 +167,16 @@ model_path() {
     || die "model not found under $MODEL_DIR/$QUANT - run './run.sh setup' first"
   [ -n "$m" ] || die "model not found under $MODEL_DIR/$QUANT - run './run.sh setup' first"
   echo "$m"
+}
+
+# Resolves to a projector path, or to nothing at all. Nothing is a valid answer: the server
+# starts text-only, which is what every measurement before 2026-08-30 was taken on.
+mmproj_path() {
+  case "$MMPROJ" in
+    none) return ;;
+    auto) [ -f "$MODEL_DIR/$MMPROJ_FILE" ] && echo "$MODEL_DIR/$MMPROJ_FILE" ;;
+    *)    [ -f "$MMPROJ" ] && echo "$MMPROJ" || die "MMPROJ=$MMPROJ does not exist" ;;
+  esac
 }
 
 serve() {
@@ -206,9 +228,22 @@ serve() {
   local spec=()
   [ "${SPEC:-ngram-mod}" != "none" ] && spec=(--spec-type "${SPEC:-ngram-mod}")
 
+  local mm=() mmp
+  mmp=$(mmproj_path)
+  if [ -n "$mmp" ]; then
+    mm=(--mmproj "$mmp")
+    log "vision on: $(basename "$mmp")"
+  else
+    log "vision off (no projector; set MMPROJ or re-run setup)"
+  fi
+
   log "starting llama-server on ${HOST}:${PORT}, ctx ${CTX}, spec ${SPEC:-ngram-mod}"
   # -ot per_layer_token_embd=CPU  : keep the 51B n-gram table off the GPU
   # -lm mmap                      : serve that table from NVMe via the page cache
+  # --mmproj                      : the vision projector, when one was fetched. ~0.9 GiB of
+  #                                 extra resident weights; the model scores the same on the
+  #                                 atlas image eval as the NVFP4 checkpoint does - see
+  #                                 ../../docs/vision.md
   # --parallel 1                  : one slot. Concurrent requests queue rather than crash,
   #                                 but they do not batch - see the recipe README
   # Without an alias, llama-server reports the full GGUF path as the model id, which
@@ -222,6 +257,7 @@ serve() {
     --ctx-size "$CTX" \
     --parallel 1 \
     "${spec[@]}" \
+    "${mm[@]}" \
     --temp 1.0 --top-p 0.95 --top-k 20 \
     --host "$HOST" --port "$PORT" \
     "${extra[@]}"

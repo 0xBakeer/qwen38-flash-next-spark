@@ -219,5 +219,6 @@ present in the NVFP4 checkpoint). See [ruled-out.md](ruled-out.md#mtp-speculativ
   here, but independent reports show the IQ series behaving the opposite way. Different kernels.
 - **Quality.** No eval suite has been run against either recipe. Every number here is speed.
 - **Batch/offline throughput**, and concurrency beyond 8 simultaneous requests.
-- **Vision.** The model is multimodal and first-party `mmproj` files exist, but no vision path has
-  been benchmarked here.
+- **Vision throughput.** Both recipes now have a measured image-eval *score*
+  ([../docs/vision.md](vision.md)), but no dedicated vision throughput benchmark: the numbers
+  there are eval wall-clock at concurrency 4, not a tok/s figure.
