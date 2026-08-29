@@ -88,13 +88,35 @@ shards, the NVFP4 checkpoint contains **all 31**.
 Because the head is trained rather than copying from your prompt, it works the same on any text.
 Hence the flatness — and hence why this recipe wins on prose and loses on file rewriting.
 
-The gain is real but modest: across engines, prose goes 27.8 → 32.2 (**~1.16×**). We did not
-run our own MTP-off A/B; the upstream recipe's in-engine one measured 17 → 27 tok/s at MTP=2,
-so part of our cross-engine delta is the engine and quant, not the head. Either way it is far
-from the 3–5× dense models see. On a top-10-of-512 mixture-of-experts,
-verifying *k* draft tokens touches the *union* of experts across those positions, so speculation
-buys far less here than the 3–5× seen on dense models. Raising `MTP` above 3 makes it worse, not
-better.
+The gain is real but modest: across engines, prose goes 27.8 → 32.2 (**~1.16×**). We still
+have not run our own MTP-off A/B — the upstream recipe's in-engine one measured 17 → 27 tok/s
+at MTP=2, so part of our cross-engine delta is the engine and quant, not the head. An
+in-engine A/B on this hardware class now exists, but it is a third-party result: Jürgen
+Schmied ran both arms on their own DGX Spark — same checkpoint, same harness, same day — in
+[#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6). Their checkpoint is **not**
+this recipe's — an NVFP4-FP8 variant with a locally requantized `lm_head`, not a public
+artifact — and their vLLM build differs, so nothing in this table can be reproduced from this
+repository. It relays their report; read the shape, not the numbers:
+
+| *as reported in [#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6)* | 1 caller, decode tok/s | 16 concurrent, aggregate |
+|---|---:|---:|
+| MTP off | 26.4 *(single run)* | 96.6 |
+| MTP k=2 | 35.7 *(mean of 6)* | 99.1 |
+| | **+35%** | **inside the ~7% noise floor — not measurable** |
+
+They report acceptance at k=2 of 56.6% on that workload (position 0: 67.3%, position 1:
+46.0%). The right-hand column is their finding: **under load, speculation does not hurt — it
+stops paying.** Their explanation — once the batch saturates the machine, accepted draft
+tokens have no idle capacity to convert into throughput — matches the expert-union argument
+below, and if it holds, a single "MTP is worth Nx" number is the wrong shape of claim: the
+multiplier depends on how busy the box is. (Their TTFT at 16 concurrent also moved
+9.71 s → 6.79 s, with variance not characterized the way decode's was, so treat that as
+indicative only.)
+
+Either way the gain is far from the 3–5× dense models see: on a top-10-of-512
+mixture-of-experts, verifying *k* draft tokens touches the *union* of experts across those
+positions, so speculation buys far less here than it does on a dense model. Raising `MTP`
+above 3 makes it worse, not better.
 
 ## Install
 
@@ -163,6 +185,30 @@ So **16 is the last concurrency this configuration serves well**, at 96–109 to
 which is already about 75% of everything the box will ever do. Going to 64 buys ~35% more
 aggregate throughput and costs 27x on first-token latency.
 
+The sweep varies offered concurrency against a 64-slot server, so it shows where the box
+stops serving well — not what the `SEQS` cap itself costs. That direct A/B now exists too,
+published in [inference-atlas](https://github.com/0xBakeer/inference-atlas): the same pinned
+workloads, same box, one arm at `SEQS=2` and one at `SEQS=64`, every request completing in
+both. Only `max-num-seqs` changes between the columns:
+
+| workload | `SEQS=2` tok/s | `SEQS=64` tok/s | TTFT p50, 2 → 64 |
+|---|---:|---:|---:|
+| serve-single (1 caller) | 30.96 | 30.89 | 0.52 s → 0.53 s |
+| prefill-8k (1 caller) | 3.07 | 2.89 | 4.5 s → 4.5 s |
+| prefill-32k (1 caller) | 0.84 | 0.86 | 18.1 s → 17.5 s |
+| serve-chat-c8 (8 concurrent) | 43.4 | 81.4 (**1.88×**) | 36.3 s → **1.4 s** |
+| serve-short-c16 (16 concurrent) | 53.9 | 146.7 (**2.72×**) | 33.5 s → **1.2 s** |
+
+(Cells are the atlas `output_tok_s` value. The prefill workloads emit almost no output
+tokens, hence the small numbers; their prefill throughputs — 2,170 vs 2,031 tok/s at 8k,
+2,176 vs 2,230 at 32k — also sit inside the single-run noise floor.)
+
+The one-caller rows are identical — the cap costs nothing when the server is quiet. The
+loaded rows are the price of shipping `2`: sixteen short callers get 53.9 tok/s aggregate
+and a **33.5 s** median first token from the 2-slot server, against 146.7 tok/s and
+**1.2 s** with the cap lifted. This is stronger evidence for raising the default than the
+sweep above, because it isolates the cap: same workloads, same box, one variable.
+
 We ship `SEQS=16` for that reason. It is a cap, not a batch size — with one caller it behaves
 exactly like `SEQS=2`, so nothing is lost when the server is quiet, and a burst of up to 16 is
 served without queueing. Beyond 16, callers queue rather than all being served badly: 64
@@ -191,6 +237,16 @@ tokens got faster, but because there were a quarter as many.
 - **Full `torch.compile` is off** — an Inductor int64-indexing assert on sm_121.
 - **The n-gram gather must stay outside CUDA graphs.** `serve.sh` declares it a splitting op and
   captures `PIECEWISE`. Do not switch to a `FULL` capture mode.
+- **`VLLM_TORCH_PROFILER_DIR` is inert in this build.** Profiling moved to a CLI flag; the env
+  var registers no routes and prints no warning, so `/start_profile` just 404s. Working form:
+  `--profiler-config '{"profiler":"torch","torch_profiler_dir":"/abs/path"}'` — the profile
+  router only attaches when `profiler_config.profiler` is non-null
+  (`entrypoints/serve/profile/api_router.py: attach_router`). If you launch from a systemd
+  unit, note that `Environment=` strips the JSON's quotes; build the value inside the script
+  instead of passing it through the unit file. (Reported in
+  [#6](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/6); verified against this
+  build — the env var is absent from `envs.py`, and `--profiler-config` is accepted where
+  `--torch-profiler-dir` is not.)
 - **`VLLM_PLE_CPU_OFFLOAD=1` hangs.** The official pinned-host-RAM path registers a
   `PleOffloadLayer` and then spins a core with no disk I/O, indefinitely — it expects an offload
   worker this image does not launch. Only `VLLM_PLE_MMAP` works here.
