@@ -13,7 +13,7 @@ Sends one request at a time on purpose: concurrent requests currently abort the
 server on this architecture (see the README).
 
 Usage:
-  ./run_bench.py --api http://127.0.0.1:8000 [--model /path/to/shard-00001-of-N.gguf]
+  ./run_bench.py --api http://127.0.0.1:30000 [--model /path/to/shard-00001-of-N.gguf]
                  [--out results.md] [--skip-ctx] [--skip-tasks]
 """
 import argparse, json, os, subprocess, sys, time, urllib.request
@@ -142,7 +142,7 @@ def bench_tasks(api, rows, repeat=3, temp=0.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--api", default="http://127.0.0.1:8000")
+    ap.add_argument("--api", default="http://127.0.0.1:30000")  # run.sh's default PORT
     ap.add_argument("--model", default=None,
                     help="path to shard 00001 of the GGUF, to report table residency")
     ap.add_argument("--out", default=None)
@@ -178,7 +178,9 @@ def main():
         bench_ctx(a.api, a.model, rows)
     if not a.skip_tasks:
         bench_tasks(a.api, rows, a.repeat, a.temp)
-    print("\n---\nOne request at a time; concurrent requests abort the server (see README).")
+    print("\n---\nOne request at a time, so a queued request never shows up as slow decode.\n"
+          "`--parallel 1` makes the server queue a second in-flight request rather than\n"
+          "batch it; raising --parallel is what aborts (see README).")
 
 
 if __name__ == "__main__":
