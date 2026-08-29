@@ -21,6 +21,26 @@ support. Without that PR none of this runs at all.
 used by the long-context recipe, which retains all 31 MTP tensors and is therefore the only route
 to the model's trained draft head on this hardware.
 
+## Corrections from outside
+
+**[Ali Naeini (@rumi-ali)](https://github.com/rumi-ali)** — reproduced this recipe end to end on
+their own DGX Spark and reported four independent fixes in
+[#1](https://github.com/0xBakeer/qwen38-flash-next-spark/pull/1), all of which landed.
+
+The one that mattered most: the startup warm ran *before* `exec llama-server`, and loading the
+model evicts the n-gram table as it streams the GGUF through the box — so the 26.8 GiB read was
+discarded before it could help. They measured the table at 100% cached right after the warm and
+1.9% by the time the server answered `/health`. That diagnosis was later confirmed here by a
+different method (18% established before startup reads back as 0.06%), and it is why the warm is
+now deferred until the server is serving.
+
+Also theirs: the swap-enabled warning that could never print because procfs files always stat as
+0 bytes; two benchmark entry points defaulting to the wrong port; and `run_bench.py` still
+claiming concurrent requests abort the server after that had been corrected everywhere else.
+
+Their commit is squashed into `93c457c`, which GitHub attributed to the repository owner on
+merge; the work and the diagnosis are theirs.
+
 ## The container that makes the long-context recipe possible
 
 **[blazux/qwen3.8-Flash-DGX](https://github.com/blazux/qwen3.8-Flash-DGX)** (Apache-2.0) — the
