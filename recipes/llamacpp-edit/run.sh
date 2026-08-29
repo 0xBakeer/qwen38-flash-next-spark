@@ -54,8 +54,11 @@ EOF
 
   # Swap must be off: we want cold n-gram pages evicted from the page cache,
   # never resident weights pushed into swap.
-  if [ "$(awk 'NR==2{print $3}' /proc/swaps 2>/dev/null || echo 0)" != "" ] && [ -s /proc/swaps ] && [ "$(wc -l < /proc/swaps)" -gt 1 ]; then
-    echo "NOTE: swap is enabled. Consider 'sudo swapoff -a' so file pages are evicted instead of anonymous ones."
+  # Test the contents, not the size: procfs files always stat as 0 bytes, so the
+  # `[ -s /proc/swaps ]` guard this used to carry meant the NOTE could never print.
+  if [ "$(awk 'NR>1' /proc/swaps 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo "NOTE: swap is enabled ($(awk 'NR>1{u+=$4} END{printf "%.1f", u/1048576}' /proc/swaps) GiB in use)."
+    echo "      Consider 'sudo swapoff -a' so file pages are evicted instead of anonymous ones."
   fi
 }
 
@@ -127,18 +130,40 @@ model_path() {
 
 serve() {
   find_cuda
+  # serve() does not run preflight(), and the deferred warm below polls /health.
+  [ "${WARM:-0}" = "1" ] && { command -v curl >/dev/null || die "curl not found (or set WARM=0)"; }
   local M; M=$(model_path)
 
-  # Off by default, and the docs have said the ritual is unnecessary since 2026-08-27 while
-  # this still did it. Measured on this build: from a genuine cold start (0.06% resident) the
-  # warmer reads all 26.8 GiB at 1.01 GiB/s, 26.6 s, and reaches only 25.9% - the page cache
-  # has nowhere to put the rest once the model load has taken its share of the box. Decode at
-  # 25.88% is 34.12 tok/s against 34.99 and 37.43 for two runs at 0.06%, so the warm result
-  # sits inside the spread of cold ones. It costs 27 GiB of reads and buys nothing measurable.
-  # WARM=1 still works for A/B work.
+  # Deferred until the server is serving, and OFF by default. Two separate findings.
+  #
+  # Ordering: warming before the load is wasted. Loading the model streams the whole GGUF
+  # through a 121 GiB box and evicts the table region as it goes - measured on a GB10 as 100%
+  # cached before, 1.9% by the time the server answered /health, and independently as 18%
+  # established before startup reading back 0.06% afterwards. Backgrounding it keeps the exec
+  # below, so this script is still replaced by llama-server and signal handling is unchanged.
+  # exec preserves the PID, so $$ is llama-server's once it takes over; without the kill -0
+  # check the warmer would outlive a server that failed to start, poll out its whole budget and
+  # then read 26.8 GiB for nothing. WARM_WAIT counts attempts, each ~1 s (connection refused)
+  # to ~3 s (packets dropped).
+  #
+  # Default: 0. Fixing the ordering makes the warm actually happen, and it still is not worth
+  # doing. From a genuine cold start (0.06% resident) the warmer reads all 26.8 GiB at
+  # 1.01 GiB/s and reaches only 25.9% - the page cache has nowhere to put the rest once the
+  # model load has taken its share. Decode at 25.88% is 34.12 tok/s against 34.99 and 37.43 for
+  # two runs at 0.06%, so the warm result sits inside the spread of the cold ones, which differ
+  # from each other by 6.5%. WARM=1 still works, and is now correct when you ask for it.
   if [ "${WARM:-0}" = "1" ]; then
-    log "warming the n-gram table (one sequential read, ~27 s, reaches ~26%)"
-    python3 "$HERE/tools/warm_table.py" "$M" || echo "(warm failed; continuing)"
+    local self=$$
+    (
+      for _ in $(seq 1 "${WARM_WAIT:-600}"); do
+        kill -0 "$self" 2>/dev/null || exit 0
+        curl -sf -m 2 "http://${HOST}:${PORT}/health" >/dev/null 2>&1 && break
+        sleep 1
+      done
+      kill -0 "$self" 2>/dev/null || exit 0
+      log "warming the n-gram table (one sequential read, ~27 s, reaches ~26%)"
+      python3 "$HERE/tools/warm_table.py" "$M" || echo "(warm failed; continuing)"
+    ) &
   fi
 
   # Quoting "${EXTRA_ARGS:-}" would pass an empty argument, which llama-server rejects.

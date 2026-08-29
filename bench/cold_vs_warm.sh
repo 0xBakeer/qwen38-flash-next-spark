@@ -5,7 +5,9 @@
 # page cache needs root; without it the script measures whatever state it finds and
 # says so, which is still useful because the table does not warm on its own.
 set -euo pipefail
-API="${API:-http://127.0.0.1:8000}"
+# Port tracks run.sh's PORT default. Deliberately not ${HOST:-...}: HOST is commonly
+# exported by shells and CI images, and inheriting it would silently retarget the run.
+API="${API:-http://127.0.0.1:${PORT:-30000}}"
 MODEL="${MODEL:?set MODEL to the path of shard 00001 of the GGUF}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="${PY:-python3}"
