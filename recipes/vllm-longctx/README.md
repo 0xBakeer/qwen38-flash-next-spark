@@ -17,12 +17,66 @@ fills up. It is *not* the one to use if a coding agent is rewriting whole files 
 | Adding a function | 33.6 tok/s |
 | Spread across those four | **1.2×** (the edit recipe swings 3.2×) |
 | Time to first token, short prompt | **~0.3 s** |
-| Prefill | **~2,200–2,460 tok/s**, flat to 195k tokens |
+| Prefill | **~2,200–2,460 tok/s**, flat to 195k tokens (independently ~2,030–2,230, see below) |
+| Vision | **works** — 0.967 on the atlas image eval, where the GGUF recipe cannot do it at all |
 | Decode at 1k / 32k / 128k context | 31.7 / 33.5 / 31.7 — **no falloff** |
 | Concurrent requests | **16** served well; 64 possible for batch work |
 | Aggregate decode, 16 concurrent | **96–109 tok/s**, TTFT under 2.7 s |
 
 Full method and raw figures: [../../docs/measurements.md](../../docs/measurements.md).
+
+## Independently measured
+
+The figures above come from this repository's own `bench/portable_bench.py`. The same
+configuration has since been run through the pinned workloads of
+[inference-atlas](https://github.com/0xBakeer/inference-atlas), which is a different harness with
+a different prompt set, and the numbers are close but not identical.
+
+**Prefill**, same definition on both sides — input tokens divided by time to first token:
+
+| context | this repo | inference-atlas |
+|---|---:|---:|
+| ~8k | — | 2,031 |
+| ~20k / 32k | 2,463 | 2,230 |
+| ~128k | 2,297 | 2,057 |
+
+Flat in both, which is the claim that matters and the thing that distinguishes this recipe from
+the editing one. The atlas run is 5–10% lower throughout. The harnesses differ in prompt content,
+in warmup handling and in `max-num-seqs`, so this is a second opinion rather than a correction —
+but the honest range across both is **~2,030–2,460**, and the lower half of that is what a
+different harness saw.
+
+**Accuracy**, from the atlas eval suite on this exact configuration, every workload at 100%
+request completion:
+
+| eval | accuracy |
+|---|---:|
+| format, knowledge, math | **1.000** |
+| reasoning | 0.992 |
+| tools | 0.988 |
+| json | 0.982 |
+| instruction | 0.971 |
+| vision | 0.967 |
+| multilingual | 0.950 |
+| code | 0.829 |
+| hallucination | 0.387 |
+
+Two of those are worth pulling out. **`tools` at 0.988** exercises the
+`--enable-auto-tool-choice --tool-call-parser qwen3_coder` path this recipe ships, so the tool
+configuration is not merely present but correct. **`hallucination` at 0.387** is a hard
+benchmark that measures whether a model declines to answer what it does not know; a low score
+there is normal and is not a fault of this configuration.
+
+## Vision works here, and does not in the other recipe
+
+The NVFP4 checkpoint carries the full vision tower — **333 tensors, 448,931,056 parameters,
+unquantized** — verified by tensor name in the shards actually served. It scores **0.967** on the
+atlas image eval.
+
+The GGUF quantization of the same model contains none of it: llama.cpp ships multimodal as a
+separate projector file, so [../llamacpp-edit](../llamacpp-edit/) is text-only unless you fetch
+an `mmproj` from a third repository and pass `--mmproj`. If you need image input, that is a
+reason to choose this recipe that has nothing to do with throughput.
 
 ## Why it behaves this way
 

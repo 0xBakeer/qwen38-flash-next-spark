@@ -27,7 +27,21 @@ actually engaging, the per-token cost that page faults used to sit on top of is 
 residency stops mattering. Note also that our cold figure (88.5) now exceeds the old *warm* one
 (74.6).
 
-`tools/warm_table.py` is still shipped for A/B work. The boot-time warming ritual is not needed.
+`tools/warm_table.py` is still shipped for A/B work. The boot-time warming ritual is not needed,
+and as of 2026-08-29 `WARM` defaults to `0` in `recipes/llamacpp-edit/run.sh` — the code had been
+doing it by default while this document said it was pointless.
+
+Measured on this build, published in [inference-atlas](https://github.com/0xBakeer/inference-atlas):
+the warmer cannot reach a useful residency at all. From a genuine cold start (0.06% resident) it
+reads all 26.8 GiB at 1.01 GiB/s and lands at **25.9%**, because once the model load has taken its
+share of the 121 GiB box the page cache has nowhere to put the rest. Decode at 25.88% is 34.12
+tok/s against 34.99 and 37.43 for two runs at 0.06% — inside the spread of the cold runs, which
+differ from each other by 6.5%.
+
+Also ruled out, for the same reason: **holding the table at a chosen residency**. 18% established
+before startup is evicted to 0.06% by the model load; 18% after startup reaches 11.43%; 58%
+overshoots to 100%; and `fadvise(DONTNEED)` cannot go below 28% while the server maps the file.
+There is no stable middle to measure.
 
 ---
 
