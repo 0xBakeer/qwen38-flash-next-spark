@@ -9,6 +9,7 @@ Two working setups, plus the ones we tried and rejected.
 | Best at | rewriting files (**88.5 tok/s**) | prose (**32.2**), prefill (**~2,300**), long context |
 | Worst at | prose (27.8), prefill (253–486) | file rewriting (39.1) |
 | Consistency | 3.2× swing across tasks | **1.2× swing** |
+| Vision | 0.967 with `--mmproj` (598 s / 60 images) | 0.967 built in (233 s / 60 images) |
 | Concurrency | 1 | 2 |
 | Disk / start-up | 105 GB / ~2–4 min | 126 GB / 12–15 min |
 

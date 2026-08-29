@@ -72,11 +72,14 @@ it feel far more responsive regardless of throughput.
 It ingests 195,458 tokens in 90 seconds and holds ~2,200 tok/s across the whole window; the
 editing setup runs 253–486 tok/s and slows as context grows.
 
-**Images.** Writing & long documents, and it is not a preference — the other recipe cannot do it.
-The NVFP4 checkpoint carries the vision tower (333 tensors, 449M parameters, unquantized) and
-scores 0.967 on the atlas image eval. The GGUF has no vision tensors at all; llama.cpp ships
-multimodal as a separate projector, so the editing recipe is text-only unless you fetch an
-`mmproj` from a third repository.
+**Images.** Either, now — and this used to say otherwise. Both score **0.967** on the atlas
+image eval, 58 of 60, with identical per-category splits. The NVFP4 checkpoint carries the vision
+tower inline (333 tensors, 449M parameters, unquantized). The GGUF has no vision tensors at all,
+but llama.cpp ships multimodal as a separate projector and Unsloth publishes one in the same
+repository as the quants, so `./run.sh setup` fetches it and `--mmproj` loads it. Choose on speed
+instead: the same 60 images take 233 s on *Writing & long documents* and 598 s on *File editing*,
+part of which is the editing recipe serving a concurrency-4 eval from two slots. Details and the
+two items each one misses: [vision.md](vision.md).
 
 **More than one person or tool at once.** Writing & long documents, and by a wide margin: it
 serves **16 concurrent requests** at 96–109 tok/s aggregate with first tokens still under

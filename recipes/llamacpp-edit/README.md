@@ -63,6 +63,15 @@ traffic it saves, because this configuration is not bandwidth-bound — see
 [../../docs/ruled-out.md](../../docs/ruled-out.md). Choose a smaller quant for disk space or
 quality reasons, not for speed.
 
+## Vision
+
+`setup` fetches `mmproj-F16.gguf` (~0.9 GiB) from the same Unsloth repo as the quants, and
+`serve` passes `--mmproj` when it finds it. With it, this recipe scores **0.967** on the atlas
+image eval — the same score as the NVFP4 long-context recipe, with identical per-category splits,
+and about 2.6× slower over the 60 items. `MMPROJ=none` turns it off; every number in this
+repository that predates 2026-08-30 was measured without it.
+See [../../docs/vision.md](../../docs/vision.md).
+
 ## Known issues
 
 - **One request at a time.** `--parallel 1` is forced. Concurrent requests do not crash — they

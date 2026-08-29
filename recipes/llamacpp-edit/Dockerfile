@@ -59,13 +59,16 @@ COPY --from=build /src/build/bin/llama-cli    /usr/local/bin/llama-cli
 ENV MODEL=/model/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf \
     CTX=262144 \
     SPEC=ngram-mod \
-    ALIAS=qwen3.8-flash-next
+    ALIAS=qwen3.8-flash-next \
+    MMPROJ=/model/mmproj-F16.gguf
 
 EXPOSE 8000
 
 # -ot per_layer_token_embd=CPU  keeps the 51.2B n-gram table off the GPU
 # -lm mmap                      serves that table from NVMe via the page cache
 # --parallel 1                  concurrent requests queue rather than speeding anything up
+# --mmproj                      vision, if the projector is mounted alongside the shards. Absent,
+#                               the server starts text-only rather than failing.
 SHELL ["/bin/bash", "-c"]
 CMD llama-server \
       -m "$MODEL" \
@@ -76,5 +79,6 @@ CMD llama-server \
       --ctx-size "$CTX" \
       --parallel 1 \
       $( [ "$SPEC" != none ] && echo --spec-type "$SPEC" ) \
+      $( [ -f "$MMPROJ" ] && echo --mmproj "$MMPROJ" ) \
       --temp 1.0 --top-p 0.95 --top-k 20 \
       --host 0.0.0.0 --port 8000
