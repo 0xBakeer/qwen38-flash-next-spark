@@ -19,7 +19,8 @@ fills up. It is *not* the one to use if a coding agent is rewriting whole files 
 | Time to first token, short prompt | **~0.3 s** |
 | Prefill | **~2,200–2,460 tok/s**, flat to 195k tokens |
 | Decode at 1k / 32k / 128k context | 31.7 / 33.5 / 31.7 — **no falloff** |
-| Concurrent requests | 2 |
+| Concurrent requests | **16** served well; 64 possible for batch work |
+| Aggregate decode, 16 concurrent | **96–109 tok/s**, TTFT under 2.7 s |
 
 Full method and raw figures: [../../docs/measurements.md](../../docs/measurements.md).
 
@@ -62,7 +63,7 @@ First start reads ~83 GiB off disk and takes **12–15 minutes**.
 | `PORT` | `8000` | host port |
 | `BIND` | `127.0.0.1` | loopback only. `0.0.0.0` exposes it to your whole network |
 | `CTX` | `262144` | context length. The full native window |
-| `SEQS` | `2` | concurrent sequences |
+| `SEQS` | `16` | concurrent sequences. See *How many at once* below |
 | `GPU_MEM` | `0.85` | share of the 128 GB pool for weights + KV |
 | `MTP` | `3` | speculative tokens. `0` disables, for an A/B |
 | `PREWARM` | `1` | stream the table at boot so the first request is not cold |
@@ -71,6 +72,53 @@ The upstream default is `GPU_MEM=0.78`, which leaves only 10.82 GiB of KV — **
 less than the model's own context window**, so a single full-length request will not fit. We
 raise it to 0.85, which measured 18.13 GiB of KV = **641,601 tokens**, comfortably 2.4× the
 context, while still leaving ~19 GiB of headroom.
+
+## How many at once
+
+`SEQS` was `2`, the upstream container's default. This model and this recipe are both days
+old, so there was no published figure to set it against. Two slots is a scheduler cap rather
+than a memory limit: at `GPU_MEM=0.85` the server reports a KV pool of **654,635 tokens**,
+while 64 concurrent ~1.3k-token requests need about **83,000**. It left roughly 87% of the
+pool unused.
+
+Measured with the pinned parallel sweeps from
+[inference-atlas](https://github.com/0xBakeer/inference-atlas), 32 and 256 requests
+respectively, every request completed:
+
+| concurrent | tok/s each | aggregate | TTFT p50 | | tok/s each | aggregate | TTFT p50 |
+|---:|---:|---:|---:|---|---:|---:|---:|
+| | *512-token prompts* | | | | *1k-token prompts* | | |
+| 1 | 27.70 | 27.7 | 0.68 s | | 25.01 | 25.0 | 1.23 s |
+| 2 | 20.23 | 40.5 | 1.02 s | | 19.63 | 39.3 | 1.39 s |
+| 4 | 15.06 | 60.2 | 1.10 s | | 14.04 | 56.2 | 1.48 s |
+| 8 | 10.68 | 85.4 | 1.27 s | | 9.01 | 72.1 | 1.73 s |
+| **16** | 6.80 | 108.8 | **2.15 s** | | 6.00 | 96.0 | **2.64 s** |
+| 32 | 4.21 | 134.8 | 13.80 s | | 3.46 | 110.8 | 16.32 s |
+| 64 | — | — | — | | 2.02 | 129.4 | 70.42 s |
+
+**Aggregate throughput never plateaus** — it keeps climbing to 64, just with sharply
+diminishing returns: 1→8 buys 2.9x, 8→16 buys 33%, 16→32 buys 15%, 32→64 buys 17%.
+
+**Time to first token is where the wall is, and it is a cliff rather than a slope.** It sits
+under 2.7 s all the way to 16 concurrent, then goes to 16 s at 32 and **70 s at 64**. Both
+sweeps agree on where it breaks. The cause is `--max-num-batched-tokens 8192`: past a certain
+number of simultaneous prefills, each one is chunked across many scheduler steps before its
+first token appears.
+
+So **16 is the last concurrency this configuration serves well**, at 96–109 tok/s aggregate,
+which is already about 75% of everything the box will ever do. Going to 64 buys ~35% more
+aggregate throughput and costs 27x on first-token latency.
+
+We ship `SEQS=16` for that reason. It is a cap, not a batch size — with one caller it behaves
+exactly like `SEQS=2`, so nothing is lost when the server is quiet, and a burst of up to 16 is
+served without queueing. Beyond 16, callers queue rather than all being served badly: 64
+requests through a 16-slot server finish in about 171 s against 127 s if batched 64-wide, but
+the ones being served see 2.6 s to first token instead of 70 s.
+
+**Set `SEQS=64` if you are running batch work** where nothing is waiting on a first token and
+the extra ~35% aggregate throughput is what matters. That is also the configuration the atlas
+cells for this recipe were measured at, deliberately, so that no cell is capped by the
+scheduler.
 
 ## Turn thinking off
 
@@ -92,8 +140,10 @@ tokens got faster, but because there were a quarter as many.
 - **`VLLM_PLE_CPU_OFFLOAD=1` hangs.** The official pinned-host-RAM path registers a
   `PleOffloadLayer` and then spins a core with no disk I/O, indefinitely — it expects an offload
   worker this image does not launch. Only `VLLM_PLE_MMAP` works here.
-- **Two sequences, not two hundred.** If a chat UI, a coding agent and a background job all point
-  at this endpoint, they share two slots and queue.
+- **Sixteen sequences, not two hundred.** A chat UI, a coding agent and a background job can
+  all point at this endpoint without queueing. This is still not a multi-user server: past 16
+  concurrent requests time to first token collapses from under 2.7 s to 16 s at 32 and 70 s
+  at 64.
 
 ## Verifying it works
 
