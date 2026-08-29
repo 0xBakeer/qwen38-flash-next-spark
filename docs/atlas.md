@@ -62,7 +62,7 @@ workloads, same box, one variable — and the result changed what this repositor
 - The 64-caller cell at `SEQS=2` **lost 127 of 640 requests** to the workload's own timeout —
   the only cell in either arm that failed requests.
 
-Full table and the reasoning: [../recipes/vllm-longctx/README.md](../recipes/vllm-longctx/README.md#sixteen-sequences-not-two-hundred).
+Full table and the reasoning: [../recipes/vllm-longctx/README.md](../recipes/vllm-longctx/README.md#how-many-at-once).
 The recipe now ships `SEQS=16`.
 
 ## 3. Vision, where the docs were simply wrong
