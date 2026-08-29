@@ -75,5 +75,7 @@ for CTX in $CTXS; do
 done
 
 echo >> "$OUT"
-echo "Every run is one request at a time; concurrent requests abort the server." >> "$OUT"
+echo "Every run is one request at a time. Concurrent requests do not abort the server -" >> "$OUT"
+echo "they queue at --parallel 1, and batch at higher settings - but this matrix does not" >> "$OUT"
+echo "measure them, so treat every figure here as single-stream." >> "$OUT"
 echo "Results written to $OUT" >&2

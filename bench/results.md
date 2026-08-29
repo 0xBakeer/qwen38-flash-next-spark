@@ -86,6 +86,8 @@ headroom and it stays resident.
 ## Not measured
 
 - Throughput between 19k and 262k context.
-- Multiple concurrent requests: they abort the server (see the README).
+- Multiple concurrent requests. These runs are all single-stream. (An earlier version of this
+  line said concurrency aborts the server. It does not: eight simultaneous requests all returned
+  200, and `--parallel 2` serves two slots. Neither was measured *here*.)
 - Any quant other than UD-Q4_K_XL.
 - Whether a longer or repeated run converges on a stable cached fraction at 262k.
