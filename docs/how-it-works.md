@@ -99,6 +99,47 @@ this — one 26.8 GiB sequential read, ~26 s. Measured effect at the time:
 >
 > `tools/warm_table.py` is kept for A/B work. The boot-time warming ritual is not needed.
 
+> **Confirmed 2026-08-29, and `WARM` now defaults to 0.** Re-measured with residency set
+> deliberately and verified by `mincore(2)` before every run, published in
+> [inference-atlas](https://github.com/0xBakeer/inference-atlas):
+>
+> | residency at start | aggregate tok/s | per-request p50 | tpot p50 |
+> |---:|---:|---:|---:|
+> | 0.06% | 37.43 | 39.72 | 25.18 ms |
+> | 0.06% | 34.99 | 36.39 | 27.48 ms |
+> | 25.88% | 34.12 | 35.57 | 28.11 ms |
+>
+> The warm number sits **inside** the spread of two identical cold runs. Those two differ by
+> **6.5%** at the same residency, which is the noise floor of this measurement — larger than
+> the cold-to-warm difference. No single-run comparison here can resolve an effect below
+> roughly 10%, which is the regime both the original +42% and its retraction were working in.
+>
+> **The warmer cannot reach the 79% in the table above.** From a genuine 0.06% start it reads
+> all 26.8 GiB at 1.01 GiB/s and lands at **25.9%**: once the model load has taken its share of
+> the 121 GiB, the page cache has nowhere to put the rest of the table. Run against an already
+> warm cache (54.6%) it moves it to 55.4% — 0.8 points for another full read.
+>
+> **A warm performed before the server starts is discarded entirely.** 18% established with
+> nothing mapping the file reads back as **0.06%** once llama-server has loaded, because the
+> load streams the non-table weights through the box and evicts the table on its way. That is
+> the ordering bug reported in
+> [#1](https://github.com/0xBakeer/qwen38-flash-next-spark/pull/1), confirmed here by a second
+> method. It is a real bug; it is simply not worth fixing a warm that buys nothing.
+>
+> **Intermediate residency is not a state this box can hold.** Every attempt to sit at one
+> failed, each for its own measured reason: 18% before startup → 0.06% (evicted by the load),
+> 18% after startup → 11.43% (memory pressure evicts part of the prefix as it is read), 58% →
+> **100%** (kernel readahead), and `fadvise(DONTNEED)` cannot go below **28%** while the server
+> maps the file. A 26.82 GiB region inside a 121 GiB box that is mostly model weights settles
+> at one end or the other. That is the likeliest reason two careful measurements disagreed:
+> both were sampling a moving target with no way to know where it sat.
+>
+> **The copy-heavy workload cannot be measured cold at all.** Sampling residency live during an
+> `agentic-coding-replay` run that began at 0.06%: **54.75%** after roughly 50 requests, and
+> **79.1%** after 4h28m and 537 tasks. It warms the table it is supposed to be held cold
+> against, within minutes. Any cold-versus-warm figure from that workload — including the
+> original +42% — describes its first few minutes and not the run.
+
 **What we believed on 2026-08-26, and no longer do.** The +6% above was measured with
 speculation OFF. With `--spec-type ngram-mod` enabled, warming appeared to be worth far more —
 up to +42% on copy-heavy work (52.6 -> 74.6 tok/s) — on the reasoning that verifying a 50-60

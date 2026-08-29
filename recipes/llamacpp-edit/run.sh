@@ -129,11 +129,15 @@ serve() {
   find_cuda
   local M; M=$(model_path)
 
-  # The n-gram table does not warm on its own: 320M rows addressed by a 3-gram hash
-  # means a short workload almost never touches a row twice. One sequential read
-  # cuts major faults ~6x. Skip with WARM=0.
-  if [ "${WARM:-1}" = "1" ]; then
-    log "warming the n-gram table (one sequential read, ~30 s)"
+  # Off by default, and the docs have said the ritual is unnecessary since 2026-08-27 while
+  # this still did it. Measured on this build: from a genuine cold start (0.06% resident) the
+  # warmer reads all 26.8 GiB at 1.01 GiB/s, 26.6 s, and reaches only 25.9% - the page cache
+  # has nowhere to put the rest once the model load has taken its share of the box. Decode at
+  # 25.88% is 34.12 tok/s against 34.99 and 37.43 for two runs at 0.06%, so the warm result
+  # sits inside the spread of cold ones. It costs 27 GiB of reads and buys nothing measurable.
+  # WARM=1 still works for A/B work.
+  if [ "${WARM:-0}" = "1" ]; then
+    log "warming the n-gram table (one sequential read, ~27 s, reaches ~26%)"
     python3 "$HERE/tools/warm_table.py" "$M" || echo "(warm failed; continuing)"
   fi
 

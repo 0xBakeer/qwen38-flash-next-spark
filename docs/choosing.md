@@ -72,6 +72,12 @@ it feel far more responsive regardless of throughput.
 It ingests 195,458 tokens in 90 seconds and holds ~2,200 tok/s across the whole window; the
 editing setup runs 253–486 tok/s and slows as context grows.
 
+**Images.** Writing & long documents, and it is not a preference — the other recipe cannot do it.
+The NVFP4 checkpoint carries the vision tower (333 tensors, 449M parameters, unquantized) and
+scores 0.967 on the atlas image eval. The GGUF has no vision tensors at all; llama.cpp ships
+multimodal as a separate projector, so the editing recipe is text-only unless you fetch an
+`mmproj` from a third repository.
+
 **More than one person or tool at once.** Writing & long documents, and by a wide margin: it
 serves **16 concurrent requests** at 96–109 tok/s aggregate with first tokens still under
 2.7 s. Neither setup is a multi-user server, though — past 16, time to first token goes to
