@@ -273,9 +273,20 @@ bug, explained why that does not follow —
   guard hits. Our 49.3% hit rate was exactly that. Reaching the zero-state restore needs a Mamba
   block to have been published first, which depends on scheduling.
 
-**Upstream vLLM is not affected**: `CircularBufferSpec` does not exist there, so upstream's
-`min()` is 1,600 and the same lines are harmless. That is why no bug was filed against vLLM — on
-the code reading alone it would have been a wrong report.
+**Upstream `main` is not affected — but that is a statement about today, not about vLLM.**
+`CircularBufferSpec` is not on `main`, so its `min()` is 1,600 and the same lines are harmless
+there. It arrives with
+[vllm-project/vllm#53896](https://github.com/vllm-project/vllm/pull/53896) ("[Model] Support
+Qwen3.8-Flash-Next", open against `main`), which the official Flash-Next image is built from —
+and that PR adds `class CircularBufferSpec` to `vllm/v1/kv_cache_interface.py` while also
+touching both consumers, `vllm/v1/core/sched/scheduler.py` and
+`vllm/v1/worker/gpu/model_states/mamba_hybrid.py`. So the defect is upstream's, on a release
+branch rather than on `main`, and it lands when that branch does.
+
+That is [@blazux](https://github.com/blazux)'s correction, verified here against the PR's own
+file list. It is also the third time this investigation has had to narrow a claim: first "a GB10
+GDN kernel bug", then "the mismatch does not arise here", then "upstream is not affected". The
+report belongs on that PR, and its author is reporting it there.
 
 For running it, the practical rule is simple: the fix is in the container from `8347e7c`
 (2026-08-29) onward, `serve.sh` prints the upstream sha it was built from, and caching is on by
