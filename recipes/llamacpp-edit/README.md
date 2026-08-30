@@ -77,7 +77,9 @@ See [../../docs/vision.md](../../docs/vision.md).
 - **Two requests at a time**, since 2026-08-30. `--parallel 2` — measured at 1.24× on 16
   concurrent short requests and 1.30× on 8 concurrent chat requests, and free when only one
   caller is present. The cost is context: llama.cpp divides `--ctx-size` across slots, so two
-  slots means 131,072 tokens per request rather than 262,144. `PARALLEL=1` restores the full
+  slots means 131,072 tokens per request rather than 262,144 — and a prompt above that is
+  refused with a 400, not truncated: the atlas `prefill-128k` workload (161,064 tokens on this
+  tokenizer) fails all ten requests at two slots and fits at one. `PARALLEL=1` restores the full
   window. Do not raise it far — at 64 slots the server thrashes its prompt cache and loses
   requests. [../../docs/parallel.md](../../docs/parallel.md) has the whole curve.
 - **Quantized KV aborts** on this architecture. Keep it at f16; at ~24 KB/token it is cheap.
