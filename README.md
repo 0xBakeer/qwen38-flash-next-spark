@@ -23,7 +23,7 @@ you a factor of two, so it is worth thirty seconds.
 | Time to start answering (short prompt)      | ~1–2 s | **~0.3 s** |
 | Reading a 128,000-token document            | ~7 min | **~56 s** |
 | Speed at very long context                  | degrades | **stays flat** |
-| Handles more than one request at a time     | no | yes, two |
+| Handles more than one request at a time     | two, at half the context each | **sixteen** |
 | Disk needed                                 | 105 GB | 126 GB |
 
 **Rule of thumb**
@@ -123,6 +123,7 @@ published with the task named, in [docs/measurements.md](docs/measurements.md).
 **Going deeper**
 - [Hardware notes](docs/hardware-notes.md) — GB10 specifics, and where the remaining performance is
 - [Speculative decoding](docs/speculative-decoding.md) — why throughput varies 3× by task
+- [How many at once](docs/parallel.md) — slots cost context on llama.cpp, and 64 is not a setting
 - [Open WebUI](docs/open-webui.md) — connecting it to a chat interface
 - [Sources](docs/sources.md) — model, weights, upstream issues
 

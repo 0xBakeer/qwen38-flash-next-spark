@@ -37,6 +37,12 @@ MMPROJ="${MMPROJ:-auto}"
 MMPROJ_FILE="${MMPROJ_FILE:-mmproj-F16.gguf}"
 CUDA_ARCH="${CUDA_ARCH:-121}"          # GB10 is SM 12.1; cmake promotes this to 121a
 CTX="${CTX:-262144}"                   # KV is only ~24 KB/token, so full context is affordable
+# Slots. llama.cpp divides CTX by PARALLEL and gives each slot a private, fixed share, so this
+# is not vLLM's --max-num-seqs: a slot count is a standing claim on the context whether or not
+# anyone is using it. 2 costs nothing at one caller (35.02 tok/s inside the 34.12-37.43 spread
+# of three one-slot repeats) and is worth 1.24-1.30x under load, leaving 131,072 tokens per
+# request - four times the largest context ever measured here. See ../../docs/parallel.md.
+PARALLEL="${PARALLEL:-2}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-30000}"
 JOBS="${JOBS:-$(nproc)}"
@@ -244,8 +250,9 @@ serve() {
   #                                 extra resident weights; the model scores the same on the
   #                                 atlas image eval as the NVFP4 checkpoint does - see
   #                                 ../../docs/vision.md
-  # --parallel 1                  : one slot. Concurrent requests queue rather than crash,
-  #                                 but they do not batch - see the recipe README
+  # --parallel                    : slots. CTX is divided across them, so 2 means 131,072
+  #                                 tokens per request. Raising it buys concurrency and spends
+  #                                 context; 64 is not a configuration - see docs/parallel.md
   # Without an alias, llama-server reports the full GGUF path as the model id, which
   # leaks the filesystem layout to every API client and reads badly in model pickers.
   exec "$SRC/build/bin/llama-server" \
@@ -255,7 +262,7 @@ serve() {
     -ot "per_layer_token_embd=CPU" \
     --n-gpu-layers 999 \
     --ctx-size "$CTX" \
-    --parallel 1 \
+    --parallel "$PARALLEL" \
     "${spec[@]}" \
     "${mm[@]}" \
     --temp 1.0 --top-p 0.95 --top-k 20 \

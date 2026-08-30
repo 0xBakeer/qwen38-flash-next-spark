@@ -76,7 +76,7 @@ Unsloth publishes alongside the quants, the editing recipe scores **0.967** on
 
 ## 4. Two slots cost nothing when nobody is waiting
 
-The editing recipe forces `--parallel 1`. Running the same workloads at two slots, with the
+The editing recipe forced `--parallel 1` until 2026-08-30. Running the same workloads at two slots, with the
 vision projector loaded, gives a like-for-like pair at concurrency 1:
 
 | workload | `--parallel 1` | `--parallel 2` + projector |
@@ -90,8 +90,11 @@ noise floor, so the second slot and the 0.9 GiB projector cost nothing measurabl
 caller is present. `prefill-8k` is 6.7% higher, but there is only one run on each side and no
 repeat to bound prefill noise, so that one is suggestive, not established.
 
-What this pair does **not** answer is whether two slots *batch* under load. That needs the
-loaded workloads on both sides, which is running now.
+They do batch under load, which the paired loaded workloads then showed: 1.24× on
+`serve-short-c16` and 1.30× on `serve-chat-c8`, all requests completing on both sides. The
+default moved to 2 on the strength of it. Going further does not work — 64 slots is worse than
+8 at every concurrency and loses 63 of 64 requests at 16 offered, because llama.cpp partitions
+the context rather than pooling it. [parallel.md](parallel.md) has the curve.
 
 ## 5. A default we could not justify, changed by an outside report
 

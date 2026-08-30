@@ -10,7 +10,7 @@ Two working setups, plus the ones we tried and rejected.
 | Worst at | prose (27.8), prefill (253–486) | file rewriting (39.1) |
 | Consistency | 3.2× swing across tasks | **1.2× swing** |
 | Vision | 0.967 with `--mmproj` (598 s / 60 images) | 0.967 built in (233 s / 60 images) |
-| Concurrency | 1 slot by default | **16** — served well at 96–109 tok/s aggregate, TTFT under 2.7 s |
+| Concurrency | 2 slots — 131k context each, 1.2–1.3× under load | **16** — served well at 96–109 tok/s aggregate, TTFT under 2.7 s |
 | Disk / start-up | 105 GB / ~2–4 min | 126 GB / 12–15 min |
 
 Full comparison: [../docs/choosing.md](../docs/choosing.md).
