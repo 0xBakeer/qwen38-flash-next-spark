@@ -126,6 +126,7 @@ published with the task named, in [docs/measurements.md](docs/measurements.md).
 - [How many at once](docs/parallel.md) — slots cost context on llama.cpp, and 64 is not a setting
 - [Open WebUI](docs/open-webui.md) — connecting it to a chat interface
 - [Sources](docs/sources.md) — model, weights, upstream issues
+- [Changelog](CHANGELOG.md) — which defaults changed when, and what that does to your numbers
 
 ---
 

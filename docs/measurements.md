@@ -2,6 +2,11 @@
 
 Every number in this repository, how it was taken, and what it does and does not support.
 
+**Version.** Every figure on this page was measured on **v0.1.0** defaults — `PARALLEL=1`,
+`PREFIX_CACHE=0`, no vision projector. v0.2.0 changed all three; see
+[../CHANGELOG.md](../CHANGELOG.md) for what each one costs, and set those three to reproduce
+what is here.
+
 **Machine.** ASUS Ascent GX10 (NVIDIA GB10, SM121), 128 GB unified memory (~121 GiB usable),
 ~273 GB/s, Ubuntu 24.04.4, kernel 6.17.0-1029-nvidia aarch64, driver 580.173.02, CUDA 13.0,
 swap off. Nothing else was contending for the GPU: the host's usual API endpoint was shut off for

@@ -22,6 +22,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The version of the recipes, not of vLLM. A default changing here moves your numbers.
+RECIPE_VERSION="$(cat "$HERE/../../VERSION" 2>/dev/null || echo unknown)"
 ROOT="${ROOT:-$HOME/.qwen38fn-longctx}"
 SRC="${SRC:-$ROOT/qwen3.8-Flash-DGX}"
 NAME="${NAME:-qwen38-flash}"
@@ -78,7 +80,7 @@ BUILT_FROM=$(docker image inspect -f '{{index .Config.Labels "de.qwen38fn.upstre
 [ -n "$BUILT_FROM" ] && [ "$BUILT_FROM" != "<no value>" ] || BUILT_FROM="unknown (image predates the build label)"
 
 cat <<EOF
->> $NAME starting on ${BIND}:${PORT}, context $CTX, MTP=$MTP
+>> $NAME starting on ${BIND}:${PORT}, context $CTX, MTP=$MTP, recipe v${RECIPE_VERSION}
 >> image built from upstream $BUILT_FROM
 >> first boot loads ~83 GiB of weights and takes 12-15 minutes. Watch:
      docker logs -f $NAME
