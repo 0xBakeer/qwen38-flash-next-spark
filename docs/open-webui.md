@@ -15,14 +15,15 @@ Two things worth doing on the server side:
 - **`--alias`.** `run.sh` passes `--alias qwen3.8-flash-next` by default. Without it,
   `llama-server` reports the full GGUF path as the model id, which reads badly in the picker and
   advertises your filesystem layout to every client that calls `/v1/models`.
-- **`--parallel 1`.** Already the default in `run.sh`. Concurrent requests do **not** crash —
-  corrected 2026-08-27, they queue. Eight simultaneous requests all returned 200 and completed
-  in near-perfect 3-second succession. But one slot means no batching: aggregate throughput
-  stays at the single-stream rate, so a background call landing mid-generation simply makes
-  you wait. The long-context recipe serves two sequences and does batch.
+- **`--parallel 2`.** The default in `run.sh` since 2026-08-30, raised from 1 because two slots
+  cost nothing at one caller and are worth 1.24–1.30× under load. That is exactly the case a
+  chat UI creates: a background title-generation call landing mid-generation now has somewhere
+  to go instead of queueing behind you. The cost is context — 131,072 tokens per request rather
+  than 262,144 — and `PARALLEL=1` gives the full window back. See
+  [parallel.md](parallel.md).
 
 **Turn off title generation, tag generation and follow-up suggestions** in
-**Settings → Interface**. Each is a separate model call, and with `--parallel 1` a background
+**Settings → Interface**. Each is a separate model call, and at `PARALLEL=1` a background
 call landing while you are generating goes into the queue ahead of nothing and behind you —
 harmless, but it is your throughput it is spending.
 

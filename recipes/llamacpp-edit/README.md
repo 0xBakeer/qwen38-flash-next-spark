@@ -74,9 +74,12 @@ See [../../docs/vision.md](../../docs/vision.md).
 
 ## Known issues
 
-- **One request at a time.** `--parallel 1` is forced. Concurrent requests do not crash — they
-  queue, and we verified that: 8 simultaneous requests all returned 200, in near-perfect 3-second
-  succession. But throughput does not increase, so N clients each get roughly 1/N of the speed.
+- **Two requests at a time**, since 2026-08-30. `--parallel 2` — measured at 1.24× on 16
+  concurrent short requests and 1.30× on 8 concurrent chat requests, and free when only one
+  caller is present. The cost is context: llama.cpp divides `--ctx-size` across slots, so two
+  slots means 131,072 tokens per request rather than 262,144. `PARALLEL=1` restores the full
+  window. Do not raise it far — at 64 slots the server thrashes its prompt cache and loses
+  requests. [../../docs/parallel.md](../../docs/parallel.md) has the whole curve.
 - **Quantized KV aborts** on this architecture. Keep it at f16; at ~24 KB/token it is cheap.
 - **No MTP.** The GGUF converter drops the model's trained draft head — we confirmed zero MTP
   tensors across all four shards. If you want that, use the other recipe.
