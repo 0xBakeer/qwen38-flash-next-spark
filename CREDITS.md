@@ -28,6 +28,12 @@ to the model's trained draft head on this hardware.
 
 ## Corrections from outside
 
+**[@faparicior](https://github.com/faparicior)** — for
+[#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9): prefix caching, which this
+recipe disabled and explained with an unsourced claim about a GB10 kernel bug. Measured after
+the report: 1.76× aggregate throughput and less than half the first-token latency on a
+shared-prefix workload, with no loss of accuracy. It is on by default because they pushed back.
+
 **[Ali Naeini (@rumi-ali)](https://github.com/rumi-ali)** — reproduced this recipe end to end on
 their own DGX Spark and reported four independent fixes in
 [#1](https://github.com/0xBakeer/qwen38-flash-next-spark/pull/1), all of which landed.

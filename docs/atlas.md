@@ -93,6 +93,24 @@ repeat to bound prefill noise, so that one is suggestive, not established.
 What this pair does **not** answer is whether two slots *batch* under load. That needs the
 loaded workloads on both sides, which is running now.
 
+## 5. A default we could not justify, changed by an outside report
+
+`serve.sh` disabled prefix caching and explained it with an unsourced claim about a GB10 kernel
+bug. [@faparicior](https://github.com/faparicior) reported it working; measuring it settled the
+question. Same box, same `SEQS=64`, only the flag differing, on `serve-prefix-c16-v1` — the
+pinned workload that groups its requests by shared prefix:
+
+| | caching off | caching on |
+|---|---:|---:|
+| Aggregate decode | 46.50 tok/s | **81.79** (1.76×) |
+| Time to first token, p50 | 5.86 s | **2.55 s** |
+| Wall clock | 1,020.9 s | **573.7 s** |
+| `eval-format-v1` accuracy | 1.000 | 1.000 |
+
+Correctness was checked before throughput: three identical requests at temperature 0 returned
+byte-identical answers with a real cache hit behind them. The flag now defaults on, and
+`PREFIX_CACHE=0` reproduces every prefill figure published here — all of which were cache-free.
+
 ## Where the numbers live
 
 | Recipe | Cells |

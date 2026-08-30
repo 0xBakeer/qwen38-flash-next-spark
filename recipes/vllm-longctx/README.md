@@ -242,6 +242,45 @@ the extra ~35% aggregate throughput is what matters. That is also the configurat
 cells for this recipe were measured at, deliberately, so that no cell is capped by the
 scheduler.
 
+## Prefix caching
+
+**On by default since 2026-08-30.** It was off, and the reason this repository gave — "a GB10 GDN
+kernel bug" — had no source next to it. [@faparicior](https://github.com/faparicior) reported it
+working over a five-hour coding session at a 96% hit rate
+([#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9)), which is what prompted
+measuring it instead of repeating the claim.
+
+Correctness first. Three identical requests at temperature 0 over an 8.6k-token prompt returned
+byte-identical, correct answers, with a real cache hit behind calls 2 and 3 — and the same held
+with the community image's `block_size` patch reverted to what vLLM `main` carries, so nothing
+here depends on that patch. `eval-format-v1` scored **30/30** with caching on, matching the
+cache-free cell.
+
+Then the benefit, on `serve-prefix-c16-v1` — 192 requests, 16 concurrent, grouped by shared
+prefix — same box, same `SEQS=64`, only the flag differing:
+
+| | caching off | caching on |
+|---|---:|---:|
+| Aggregate decode | 46.50 tok/s | **81.79** (1.76×) |
+| Prefill | 16,453 tok/s | **30,728** (1.87×) |
+| Time to first token, p50 | 5.86 s | **2.55 s** |
+| Time to first token, p90 | 12.16 s | **5.28 s** |
+| Wall clock | 1,020.9 s | **573.7 s** |
+| Requests completed | 192/192 | 192/192 |
+
+Server-reported hit rate over that run: **66.5%**.
+
+Two caveats worth carrying:
+
+- **Every prefill number published in this repository was measured cache-free**, including the
+  ~2,030–2,460 tok/s range quoted above. They are not comparable with a cache-assisted run, and
+  the 30,728 tok/s figure in that table is a *cache-assisted* prefill on a workload built out of
+  shared prefixes — it is not a prefill speed. `PREFIX_CACHE=0` restores the measured
+  configuration.
+- **The benefit is entirely about repetition.** Multi-turn chat, an agent loop re-sending its
+  scratchpad, several requests behind one system prompt. A workload of unrelated prompts gains
+  nothing, and pays a little bookkeeping.
+
 ## Turn thinking off
 
 Thinking is on by default and **86% of generated tokens were reasoning** in our measurements. The
@@ -254,41 +293,10 @@ tokens got faster, but because there were a quarter as many.
 
 ## Known issues
 
-- **Prefix caching is off here, and the reason we gave for it was wrong.** `serve.sh` passes
-  `--no-enable-prefix-caching`, and this line used to call that "a GB10 GDN kernel bug". It is
-  not a kernel bug and it is not really about GDN. From the
-  [upstream README](https://github.com/blazux/qwen3.8-Flash-DGX): vLLM's engine core overwrites
-  `cache_config.block_size` with the *smallest* KV-group block size — 16 tokens here, because of
-  the QSA raw-key ring — while the Mamba state block is 1,600. Two places used the former as the
-  latter, so on a prefix hit the worker computed the state slot as `(3200-1)//16` instead of `1`,
-  read past its block-table row, and restored an **all-zero Mamba state**.
-
-  **We could not reproduce that failure, and the reason looks structural.** On a rebuilt image
-  (upstream `b6dae9f`) the server logs, at startup:
-
-  ```
-  interface.py:915  Setting attention block size to 1600 tokens to ensure that attention page
-                    size is >= mamba page size.
-  interface.py:939  Padding mamba page size by 0.25% to ensure that mamba page size and
-                    attention page size are exactly equal.
-  ```
-
-  vLLM aligns the attention block *up* to the Mamba block and pads the pages to match, so every
-  KV group ends up at 1,600 and the `min()` returns 1,600 — the mismatch the diagnosis depends on
-  does not arise in this configuration. Tested directly by reverting those two lines to what
-  vLLM `main` has today, in the same container: three identical requests at temperature 0 returned
-  **byte-identical answers**, at a real **49.3% prefix cache hit rate** (2 × 6,400 tokens served
-  from cache, 6,400 = 4 × the 1,600-token block), with the out-of-range state-copy guard counter
-  at **zero**.
-
-  So on today's image prefix caching appears to work correctly with or without the patch. What we
-  cannot say is whether it was broken on the image our published cells were built from
-  (`82ed48d`, 2026-08-26) — that build predates upstream's page-size alignment work landing in
-  this fork, and we have not rebuilt it to find out. The original "GB10 GDN kernel bug" claim
-  remains unsourced and unverified either way; it is simply not the reason we now have.
-
-  Whether to flip the default is being measured against
-  [#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9).
+- **Prefix caching is on** (`PREFIX_CACHE=1`), and it used to be off here for a reason we could
+  not substantiate — see [Prefix caching](#prefix-caching). Set `PREFIX_CACHE=0` to
+  reproduce any prefill figure published in this repository — all of them were measured
+  cache-free.
 - **Full `torch.compile` is off** — an Inductor int64-indexing assert on sm_121.
 - **The n-gram gather must stay outside CUDA graphs.** `serve.sh` declares it a splitting op and
   captures `PIECEWISE`. Do not switch to a `FULL` capture mode.

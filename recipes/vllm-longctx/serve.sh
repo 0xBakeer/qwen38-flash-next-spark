@@ -15,6 +15,10 @@
 #   GPU_MEM=0.85     fraction of the 128 GB pool for weights + KV
 #   MTP=3            speculative tokens from the model's MTP head (0 disables)
 #   PREWARM=1        stream the n-gram table once at boot so the first request is not cold
+#   PREFIX_CACHE=1   reuse KV for repeated prefixes. 1.76x aggregate and less than half the
+#                    first-token latency on a shared-prefix workload - see README. Set 0 to
+#                    reproduce the published prefill figures, which were all measured
+#                    cache-free.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +32,7 @@ PORT="${PORT:-8000}"
 BIND="${BIND:-127.0.0.1}"
 CTX="${CTX:-262144}"
 SEQS="${SEQS:-16}"
+PREFIX_CACHE="${PREFIX_CACHE:-1}"
 GPU_MEM="${GPU_MEM:-0.85}"
 MTP="${MTP:-3}"
 PREWARM="${PREWARM:-1}"
@@ -61,7 +66,8 @@ docker run -d --name "$NAME" --gpus all --ipc=host --shm-size 16g \
   "$SNAP_IN" --served-model-name qwen3.8-flash-next \
     --host 0.0.0.0 --port 8000 --load-format safetensors \
     --max-model-len "$CTX" --max-num-seqs "$SEQS" --gpu-memory-utilization "$GPU_MEM" \
-    --no-enable-prefix-caching --enable-chunked-prefill --max-num-batched-tokens 8192 \
+    $( [ "$PREFIX_CACHE" = 0 ] && echo --no-enable-prefix-caching || echo --enable-prefix-caching ) \
+    --enable-chunked-prefill --max-num-batched-tokens 8192 \
     $CC \
     --no-enable-flashinfer-autotune \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
