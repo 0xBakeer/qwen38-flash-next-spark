@@ -251,10 +251,36 @@ working over a five-hour coding session at a 96% hit rate
 measuring it instead of repeating the claim.
 
 Correctness first. Three identical requests at temperature 0 over an 8.6k-token prompt returned
-byte-identical, correct answers, with a real cache hit behind calls 2 and 3 — and the same held
-with the community image's `block_size` patch reverted to what vLLM `main` carries, so nothing
-here depends on that patch. `eval-format-v1` scored **30/30** with caching on, matching the
-cache-free cell.
+byte-identical, correct answers, with a real cache hit behind calls 2 and 3, and `eval-format-v1`
+scored **30/30** with caching on, matching the cache-free cell.
+
+**That probe was the wrong observable, and this section said more than it should have.** It also
+reported the same result with the image's `block_size` patch reverted, and concluded "nothing
+here depends on that patch". [@blazux](https://github.com/blazux), who diagnosed the underlying
+bug, explained why that does not follow —
+[qwen3.8-Flash-DGX#5](https://github.com/blazux/qwen3.8-Flash-DGX/issues/5):
+
+- The image has a **third** KV group beyond the attention and Mamba ones. The QSA raw-key ring
+  is a `CircularBufferSpec` (`vllm/models/qwen3_8_flash_next/common/qsa_cache.py`) whose block is
+  its ring capacity, `compress_ratio * cdiv(compress_ratio + num_speculative_tokens,
+  compress_ratio)` — with this model's `indexer_compress_ratio = 4` that is **8 at `MTP=3`**, and
+  4 with speculation off. So `EngineCore`'s `min()` over the groups returns 8, not the 1,600 the
+  page alignment produced, and the mismatch the diagnosis rests on **is** present here. Confirmed
+  by reading the class out of the image this recipe ships.
+- Identical outputs do not clear it. With the split bug a cold request almost never ends a chunk
+  on a 1,600 boundary, so it publishes no Mamba block at all; the repeat then takes an
+  *attention-only* hit and recomputes the recurrent state from scratch — correct output, no
+  guard hits. Our 49.3% hit rate was exactly that. Reaching the zero-state restore needs a Mamba
+  block to have been published first, which depends on scheduling.
+
+**Upstream vLLM is not affected**: `CircularBufferSpec` does not exist there, so upstream's
+`min()` is 1,600 and the same lines are harmless. That is why no bug was filed against vLLM — on
+the code reading alone it would have been a wrong report.
+
+For running it, the practical rule is simple: the fix is in the container from `8347e7c`
+(2026-08-29) onward, `serve.sh` prints the upstream sha it was built from, and caching is on by
+default because the image this recipe builds today carries the patch. **Do not enable it on an
+image built before that commit.**
 
 Then the benefit, on `serve-prefix-c16-v1` — 192 requests, 16 concurrent, grouped by shared
 prefix — same box, same `SEQS=64`, only the flag differing:
