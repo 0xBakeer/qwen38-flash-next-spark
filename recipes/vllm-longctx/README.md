@@ -263,18 +263,32 @@ tokens got faster, but because there were a quarter as many.
   latter, so on a prefix hit the worker computed the state slot as `(3200-1)//16` instead of `1`,
   read past its block-table row, and restored an **all-zero Mamba state**.
 
-  Two things follow, and the second is the one that matters. First, upstream fixed it in
-  `8347e7c` (2026-08-29), and `PREFIX_CACHE=1` is the default there now. Second, **before that
-  fix the failure is not always a crash.** Unguarded it is a CUDA illegal memory access; with the
-  bounds guard in place it silently returns *different answers on cache hits* — fluent, plausible,
-  wrong. If you enabled prefix caching yourself on an image built before 2026-08-29, you were not
-  necessarily getting an error to tell you.
+  **We could not reproduce that failure, and the reason looks structural.** On a rebuilt image
+  (upstream `b6dae9f`) the server logs, at startup:
 
-  Every measured cell in this repository was taken on an image built from `82ed48d`
-  (2026-08-26), three days before the fix — so the flag was right for the image we measured, and
-  the explanation attached to it was not. It also means the prefill figures here are genuinely
-  cache-free. Whether to flip the default on a rebuilt image is being measured now
-  ([#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9)).
+  ```
+  interface.py:915  Setting attention block size to 1600 tokens to ensure that attention page
+                    size is >= mamba page size.
+  interface.py:939  Padding mamba page size by 0.25% to ensure that mamba page size and
+                    attention page size are exactly equal.
+  ```
+
+  vLLM aligns the attention block *up* to the Mamba block and pads the pages to match, so every
+  KV group ends up at 1,600 and the `min()` returns 1,600 — the mismatch the diagnosis depends on
+  does not arise in this configuration. Tested directly by reverting those two lines to what
+  vLLM `main` has today, in the same container: three identical requests at temperature 0 returned
+  **byte-identical answers**, at a real **49.3% prefix cache hit rate** (2 × 6,400 tokens served
+  from cache, 6,400 = 4 × the 1,600-token block), with the out-of-range state-copy guard counter
+  at **zero**.
+
+  So on today's image prefix caching appears to work correctly with or without the patch. What we
+  cannot say is whether it was broken on the image our published cells were built from
+  (`82ed48d`, 2026-08-26) — that build predates upstream's page-size alignment work landing in
+  this fork, and we have not rebuilt it to find out. The original "GB10 GDN kernel bug" claim
+  remains unsourced and unverified either way; it is simply not the reason we now have.
+
+  Whether to flip the default is being measured against
+  [#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9).
 - **Full `torch.compile` is off** — an Inductor int64-indexing assert on sm_121.
 - **The n-gram gather must stay outside CUDA graphs.** `serve.sh` declares it a splitting op and
   captures `PIECEWISE`. Do not switch to a `FULL` capture mode.

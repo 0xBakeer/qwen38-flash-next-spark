@@ -115,10 +115,13 @@ overhead-bound, not bandwidth-bound, so cutting bytes cuts the wrong cost.
   used to give. It is not a GB10 kernel bug: vLLM's engine core overwrites
   `cache_config.block_size` with the smallest KV-group block size (16, from the QSA raw-key ring)
   while the Mamba state block is 1,600, so a prefix hit computed the wrong state slot and
-  restored an all-zero Mamba state. Fixed upstream in `8347e7c` (2026-08-29); every cell here was
-  measured on an image built three days earlier. Before the fix the failure can be silent —
-  different answers on cache hits rather than a crash. One upside for us: prefill measurements
-  here are genuinely cache-free.
+  restored an all-zero Mamba state. That is the community image's diagnosis, and it is patched
+  there in `8347e7c` (2026-08-29). **We could not reproduce the failure**: on a rebuilt image
+  vLLM aligns the attention block up to the 1,600-token Mamba block and pads the pages to match,
+  so all groups agree and the mismatch never arises — reverting the patch changed nothing
+  (identical answers at a 49.3% hit rate). Every cell here was measured with caching off on an
+  older image, so the prefill measurements are genuinely cache-free; whether that older build
+  was actually broken is untested.
 - **Full `torch.compile` is unavailable** — an Inductor int64-indexing assert on sm_121.
 - **FlashInfer's `cutedsl` backend does not support SM121.**
 - **`free` accounting is confusing here.** Unified memory means "GPU" allocations and page cache
