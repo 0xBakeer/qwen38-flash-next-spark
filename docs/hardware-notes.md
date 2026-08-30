@@ -119,9 +119,10 @@ overhead-bound, not bandwidth-bound, so cutting bytes cuts the wrong cost.
   there in `8347e7c` (2026-08-29). **We could not reproduce the failure**: on a rebuilt image
   vLLM aligns the attention block up to the 1,600-token Mamba block and pads the pages to match,
   so all groups agree and the mismatch never arises — reverting the patch changed nothing
-  (identical answers at a 49.3% hit rate). Every cell here was measured with caching off on an
-  older image, so the prefill measurements are genuinely cache-free; whether that older build
-  was actually broken is untested.
+  (identical answers at a 49.3% hit rate). Prefix caching now ships **on**, worth 1.76× aggregate
+  throughput on a shared-prefix workload with no accuracy change. Every measurement published
+  here was taken with it off, so the prefill figures are genuinely cache-free; `PREFIX_CACHE=0`
+  reproduces that configuration.
 - **Full `torch.compile` is unavailable** — an Inductor int64-indexing assert on sm_121.
 - **FlashInfer's `cutedsl` backend does not support SM121.**
 - **`free` accounting is confusing here.** Unified memory means "GPU" allocations and page cache
