@@ -67,8 +67,13 @@ docker run -d --name "$NAME" --gpus all --ipc=host --shm-size 16g \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
     $SPEC
 
+# Built by setup.sh from a moving branch, so say which commit this image actually is.
+BUILT_FROM=$(docker image inspect -f '{{index .Config.Labels "de.qwen38fn.upstream-sha"}}' "$IMAGE" 2>/dev/null)
+[ -n "$BUILT_FROM" ] && [ "$BUILT_FROM" != "<no value>" ] || BUILT_FROM="unknown (image predates the build label)"
+
 cat <<EOF
 >> $NAME starting on ${BIND}:${PORT}, context $CTX, MTP=$MTP
+>> image built from upstream $BUILT_FROM
 >> first boot loads ~83 GiB of weights and takes 12-15 minutes. Watch:
      docker logs -f $NAME
 >> ready when a real completion returns 200 - /v1/models answers earlier than that, so:
