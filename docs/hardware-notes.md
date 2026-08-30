@@ -120,8 +120,9 @@ overhead-bound, not bandwidth-bound, so cutting bytes cuts the wrong cost.
   explanation for that was wrong**: the attention block is aligned up to 1,600, but a third KV
   group — the QSA raw-key ring, block size 8 at `MTP=3` — holds the `min()` at 8, so the
   mismatch is present. Identical outputs across three calls turned out to be the wrong
-  observable; the recipe README has the reason. Upstream vLLM has no such group and is
-  unaffected. Prefix caching now ships **on**, worth 1.76× aggregate
+  observable; the recipe README has the reason. Upstream `main` has no such group, but it
+  arrives with vllm-project/vllm#53896 — so this is upstream's bug on a release branch, not a
+  fork quirk. Prefix caching now ships **on**, worth 1.76× aggregate
   throughput on a shared-prefix workload with no accuracy change. Every measurement published
   here was taken with it off, so the prefill figures are genuinely cache-free; `PREFIX_CACHE=0`
   reproduces that configuration.
