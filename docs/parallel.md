@@ -59,6 +59,24 @@ distort it, and the repeat also bounds the noise on that workload.
 131,072 tokens is still four times the largest context this recipe has ever been measured at, so
 two slots give away a ceiling nobody was reaching.
 
+**But the ceiling is real, and here is what hitting it looks like.** The atlas's `prefill-128k`
+workload sends prompts that come to **161,064 tokens** on this tokenizer. At two slots every one
+of the ten requests was refused outright:
+
+```json
+{"error":{"code":400,
+  "message":"request (161064 tokens) exceeds the available context size (131072 tokens), try increasing it",
+  "type":"exceed_context_size_error","n_prompt_tokens":161064,"n_ctx":131072}}
+```
+
+0 of 10 completed. The same workload fits at `PARALLEL=1`, where the single slot holds all
+262,144. So the rule is not "two slots are free" — it is **two slots are free up to a 131,072-token
+prompt, and a hard 400 above it.** If you edit files that large, set `PARALLEL=1` and take the
+single-stream configuration; nothing else in the recipe changes.
+
+The cell is published as a failure rather than dropped, because a configuration that cannot run
+a workload is a fact about the configuration.
+
 ## What more slots cost
 
 More than they buy, and past a point the server stops working.
