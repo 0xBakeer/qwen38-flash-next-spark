@@ -47,6 +47,9 @@ HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-30000}"
 JOBS="${JOBS:-$(nproc)}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The version of the recipes, not of llama.cpp. A default changing here moves your numbers, so
+# a run that records this can be placed against the right set of published figures.
+RECIPE_VERSION="$(cat "$HERE/../../VERSION" 2>/dev/null || echo unknown)"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -243,7 +246,7 @@ serve() {
     log "vision off (no projector; set MMPROJ or re-run setup)"
   fi
 
-  log "starting llama-server on ${HOST}:${PORT}, ctx ${CTX}, spec ${SPEC:-ngram-mod}"
+  log "recipe v${RECIPE_VERSION} — starting llama-server on ${HOST}:${PORT}, ctx ${CTX}, ${PARALLEL} slot(s) of $((CTX / PARALLEL)) tokens, spec ${SPEC:-ngram-mod}"
   # -ot per_layer_token_embd=CPU  : keep the 51B n-gram table off the GPU
   # -lm mmap                      : serve that table from NVMe via the page cache
   # --mmproj                      : the vision projector, when one was fetched. ~0.9 GiB of
