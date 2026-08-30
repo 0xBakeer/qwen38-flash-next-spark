@@ -42,10 +42,19 @@ fi
 git -C "$SRC" fetch --depth 50 origin "$UPSTREAM_REF" --force
 git -C "$SRC" checkout -q "$UPSTREAM_REF"
 git -C "$SRC" pull -q --ff-only origin "$UPSTREAM_REF" || true
-log "upstream at $(git -C "$SRC" rev-parse --short HEAD)"
+UPSTREAM_SHA=$(git -C "$SRC" rev-parse --short HEAD)
+log "upstream at $UPSTREAM_SHA"
 
+# Stamp the upstream commit into the image. UPSTREAM_REF defaults to a moving branch, so two
+# people running this a week apart get materially different servers - prefix-caching behaviour
+# among them - and neither can tell from the outside which one they have. A label makes the
+# build self-describing, so a bug report against this recipe can name a commit instead of a day.
 log "building $IMAGE (pulls a multi-GB base image on first run)"
-docker build -t "$IMAGE" "$SRC"
+docker build -t "$IMAGE" \
+  --label "de.qwen38fn.upstream-repo=$UPSTREAM" \
+  --label "de.qwen38fn.upstream-ref=$UPSTREAM_REF" \
+  --label "de.qwen38fn.upstream-sha=$UPSTREAM_SHA" \
+  "$SRC"
 
 log "fetching $MODEL into $HF_CACHE (~126 GB, resumable)"
 # HF_HUB_DISABLE_XET=1: the Xet backend stalls on some Spark setups - it reports files as
