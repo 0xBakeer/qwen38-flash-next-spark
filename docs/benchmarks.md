@@ -14,7 +14,7 @@ extrapolated. Where something was not measured, it says so.
 | Memory bandwidth | ~273 GB/s |
 | OS | Ubuntu 24.04.4, kernel 6.17.0-1029-nvidia aarch64, driver 580.173.02, CUDA 13.0, swap off |
 | Editing recipe | llama.cpp, PR [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) @ `035e227` + `patches/canreuse-qwen4exp.patch`; `unsloth/Qwen3.8-Flash-Next-GGUF` UD-Q4_K_XL, 103.7 GiB |
-| Long-context recipe | vLLM `0.1.dev20073+g8e685d198`, `RadixArk/Qwen3.8-Flash-Next-NVFP4`, MTP=3, prefix caching off, PIECEWISE CUDA graphs |
+| Long-context recipe | vLLM `0.1.dev20073+g8e685d198` (image built from upstream `82ed48d`), `RadixArk/Qwen3.8-Flash-Next-NVFP4`, MTP=3, prefix caching off, PIECEWISE CUDA graphs |
 
 Nothing else contended for the GPU during any run: the host's usual API endpoint was shut off for
 the duration.

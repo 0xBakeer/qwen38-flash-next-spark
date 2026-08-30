@@ -254,8 +254,27 @@ tokens got faster, but because there were a quarter as many.
 
 ## Known issues
 
-- **Prefix caching must stay off** (`--no-enable-prefix-caching`) — a GB10 GDN kernel bug. This is
-  also why our prefill figures are honest: nothing is served from cache.
+- **Prefix caching is off here, and the reason we gave for it was wrong.** `serve.sh` passes
+  `--no-enable-prefix-caching`, and this line used to call that "a GB10 GDN kernel bug". It is
+  not a kernel bug and it is not really about GDN. From the
+  [upstream README](https://github.com/blazux/qwen3.8-Flash-DGX): vLLM's engine core overwrites
+  `cache_config.block_size` with the *smallest* KV-group block size — 16 tokens here, because of
+  the QSA raw-key ring — while the Mamba state block is 1,600. Two places used the former as the
+  latter, so on a prefix hit the worker computed the state slot as `(3200-1)//16` instead of `1`,
+  read past its block-table row, and restored an **all-zero Mamba state**.
+
+  Two things follow, and the second is the one that matters. First, upstream fixed it in
+  `8347e7c` (2026-08-29), and `PREFIX_CACHE=1` is the default there now. Second, **before that
+  fix the failure is not always a crash.** Unguarded it is a CUDA illegal memory access; with the
+  bounds guard in place it silently returns *different answers on cache hits* — fluent, plausible,
+  wrong. If you enabled prefix caching yourself on an image built before 2026-08-29, you were not
+  necessarily getting an error to tell you.
+
+  Every measured cell in this repository was taken on an image built from `82ed48d`
+  (2026-08-26), three days before the fix — so the flag was right for the image we measured, and
+  the explanation attached to it was not. It also means the prefill figures here are genuinely
+  cache-free. Whether to flip the default on a rebuilt image is being measured now
+  ([#9](https://github.com/0xBakeer/qwen38-flash-next-spark/issues/9)).
 - **Full `torch.compile` is off** — an Inductor int64-indexing assert on sm_121.
 - **The n-gram gather must stay outside CUDA graphs.** `serve.sh` declares it a splitting op and
   captures `PIECEWISE`. Do not switch to a `FULL` capture mode.

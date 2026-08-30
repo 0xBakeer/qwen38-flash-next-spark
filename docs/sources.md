@@ -19,6 +19,7 @@ Everything this recipe depends on, and where the claims in the docs come from.
 | llama.cpp | https://github.com/ggml-org/llama.cpp |
 | PR #27742 — `qwen4exp` support. **Merged 2026-08-27** (65 commits, merge commit `6c84c7d`). | https://github.com/ggml-org/llama.cpp/pull/27742 |
 | Upstream feature request that preceded it | https://github.com/ggml-org/llama.cpp/issues/27741 |
+| blazux/qwen3.8-Flash-DGX — the vLLM container the long-context recipe builds. Its README is also where the prefix-caching `block_size` diagnosis comes from. | https://github.com/blazux/qwen3.8-Flash-DGX |
 
 ### The PR merged, and both patches went with it
 
