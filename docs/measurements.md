@@ -52,7 +52,9 @@ A single tok/s figure for this model, with no task attached, is not a meaningful
 ## Prefill
 
 vLLM, NVFP4, 262,144 context. TTFT with `max_tokens=1`, so the figure is prompt ingestion alone.
-Honest because prefix caching is disabled on this platform — nothing is served from cache.
+Honest because prefix caching is disabled in this configuration — nothing is served from cache.
+That was a correctness measure on the image these numbers were taken on, not a property of the
+hardware; see [../recipes/vllm-longctx/README.md](../recipes/vllm-longctx/README.md#known-issues).
 
 | prompt tokens | TTFT | prefill tok/s |
 |---:|---:|---:|

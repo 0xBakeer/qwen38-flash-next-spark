@@ -111,8 +111,14 @@ overhead-bound, not bandwidth-bound, so cutting bytes cuts the wrong cost.
 
 ## Platform quirks to know
 
-- **Prefix caching must be disabled** on GB10 (GDN kernel bug). One upside: prefill measurements
-  are honest, because nothing is served from cache.
+- **Prefix caching is disabled in the long-context recipe**, and not for the reason this line
+  used to give. It is not a GB10 kernel bug: vLLM's engine core overwrites
+  `cache_config.block_size` with the smallest KV-group block size (16, from the QSA raw-key ring)
+  while the Mamba state block is 1,600, so a prefix hit computed the wrong state slot and
+  restored an all-zero Mamba state. Fixed upstream in `8347e7c` (2026-08-29); every cell here was
+  measured on an image built three days earlier. Before the fix the failure can be silent —
+  different answers on cache hits rather than a crash. One upside for us: prefill measurements
+  here are genuinely cache-free.
 - **Full `torch.compile` is unavailable** — an Inductor int64-indexing assert on sm_121.
 - **FlashInfer's `cutedsl` backend does not support SM121.**
 - **`free` accounting is confusing here.** Unified memory means "GPU" allocations and page cache
